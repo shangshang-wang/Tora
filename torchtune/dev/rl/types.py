@@ -26,15 +26,16 @@ class GRPOTrajectory(NamedTuple):
         answers (str): list of answers for the generated responses. [B x G]
     """
 
-    query_responses: torch.Tensor = None  # [B x G, P+L]
-    logprobs: torch.Tensor = None  # [B x G, L]
-    ref_logprobs: torch.Tensor = None  # [B x G, L]
-    advantages: torch.Tensor = None  # [B x G]
-    masks: torch.Tensor = None  # [B x G, P+L, P+L]
-    position_ids: torch.Tensor = None  # [B x G, P+L]
-    response_padding_masks: torch.Tensor = None  # [B x G, L]
-    seq_lens: torch.Tensor = None
-    answers: str = None
+    query_responses: torch.Tensor = None  # [B*G, P+L]
+    logprobs: torch.Tensor = None  # [B*G, L]
+    ref_logprobs: torch.Tensor = None  # [B*G, L]
+    rewards: torch.Tensor = None  # [B*G]
+    successes: torch.Tensor = None  # [B*G]
+    advantages: torch.Tensor = None  # [B*G]
+    masks: torch.Tensor = None  # [B*G, P+L, P+L]
+    position_ids: torch.Tensor = None  # [B*G, P+L]
+    response_padding_masks: torch.Tensor = None  # [B*G, L]
+    seq_lens: torch.Tensor = None  # [B*G]
 
 
 class GRPOStats(NamedTuple):
@@ -57,4 +58,4 @@ class GRPOStats(NamedTuple):
     ratios: torch.Tensor
     clipfrac: torch.Tensor
     approx_policy_kls: torch.Tensor
-    metadata: Optional[dict] = None
+    # metadata: Optional[dict] = None
