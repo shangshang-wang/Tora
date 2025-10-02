@@ -146,6 +146,189 @@ class LoRALinear(nn.Module, AdapterModule):
         return out + lora_out
 
 
+class LoRAXSLinear(nn.Module, AdapterModule):
+    """LoRA-XS linear layer.
+
+    This layer implements the LoRA-XS methodology, which uses Singular Value
+    Decomposition (SVD) for a more informed initialization of the adapter matrices.
+    Instead of training the low-rank matrices A and B, it freezes them and
+    introduces a tiny, trainable r x r matrix (where r is the rank) between them.
+
+    The forward pass is defined as:
+    :math:`x \\mapsto W_0x + (\\alpha / r)B R Ax`
+    where `A` and `B` are derived from the SVD of :math:`W_0` and are frozen.
+    Only the `R` matrix is trainable.
+
+    Args:
+        in_dim (int): input dimension
+        out_dim (int): output dimension
+        rank (int): rank of the low-rank approximation
+        alpha (float): scaling factor for the low-rank approximation
+        dropout (float): dropout probability. Default: 0.0
+        use_bias (bool): whether to include bias in the original linear layer.
+            Default: False
+        quantize_base (bool): Whether to quantize base linear weight or not.
+            Default: False
+        **quantization_kwargs: Keyword arguments to pass to `to_nf4` when quantizing the base linear weight.
+            Examples of valid arguments are `block_size` and `scaler_block_size`, which control the granularity of
+            weight quantization and scaler quantization respectively. This is only used if `quantize_base` is True.
+            Default None
+
+    Raises:
+        ValueError: If ``quantize_base`` is False, but quantization kwargs are provided.
+    """
+
+    def __init__(
+            self,
+            in_dim: int,
+            out_dim: int,
+            rank: int,
+            alpha: float,
+            dropout: float = 0.0,
+            use_bias: bool = False,
+            quantize_base: bool = False,
+            **quantization_kwargs,
+    ):
+        super().__init__()
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+        self.rank = rank
+        self.alpha = alpha
+        self.use_bias = use_bias
+        self._quantize_base = quantize_base
+
+        if not self._quantize_base and any([v for v in quantization_kwargs.values()]):
+            raise ValueError(
+                f"``quantize_base`` is False, but received the following quantization arguments: {quantization_kwargs}"
+            )
+
+        # Setup weight and bias
+        linear = nn.Linear(in_features=in_dim, out_features=out_dim, bias=self.use_bias)
+
+        # Store the original weight for SVD before potential quantization
+        original_weight = linear.weight.clone()
+
+        # Apply quantization if requested
+        weight = (
+            linear.weight
+            if not self._quantize_base
+            else to_nf4(linear.weight, **quantization_kwargs)
+        )
+        bias = linear.bias if self.use_bias else None
+
+        # 'self.disabled' is a flag showing whether to turn off LoRA adapters
+        self.disabled = False
+        self.merged = False
+
+        # Register the base weight and bias
+        self.register_parameter("weight", nn.Parameter(weight))
+        self.register_parameter(
+            "bias", nn.Parameter(bias) if bias is not None else None
+        )
+
+        # --- LoRA-XS Core Logic ---
+
+        # Perform SVD on the original (unquantized) weight matrix to initialize A and B
+        # Weight matrix has shape (out_dim, in_dim)
+        # We perform SVD: W = U @ S @ Vh, where U is (out_dim, r), S is (r,), Vh is (r, in_dim)
+        U, S, Vh = torch.linalg.svd(original_weight.float(), full_matrices=False)
+
+        # Truncate to the desired rank
+        U = U[:, :rank]  # Shape: (out_dim, rank)
+        S = S[:rank]  # Shape: (rank,)
+        Vh = Vh[:rank, :]  # Shape: (rank, in_dim)
+
+        # Create lora_a and lora_b layers
+        self.lora_a = nn.Linear(in_features=in_dim, out_features=rank, bias=False)
+        self.lora_b = nn.Linear(in_features=rank, out_features=out_dim, bias=False)
+
+        # Initialize weights according to LoRA-XS:
+        # lora_a.weight has shape (rank, in_dim) - needs Vh which is (rank, in_dim)
+        # lora_b.weight has shape (out_dim, rank) - needs U @ diag(sqrt(S)) which is (out_dim, rank)
+
+        # For LoRA-XS, we typically use sqrt(S) to balance the singular values
+        S_sqrt = torch.sqrt(S)
+
+        # Set the weights
+        self.lora_a.weight.data.copy_(Vh.to(dtype=original_weight.dtype))
+        self.lora_b.weight.data.copy_((U @ torch.diag(S_sqrt)).to(dtype=original_weight.dtype))
+
+        # Freeze lora_a and lora_b, as they are not trained in LoRA-XS
+        self.lora_a.weight.requires_grad = False
+        self.lora_b.weight.requires_grad = False
+
+        # Create the only trainable part: the r x r mapping matrix 'R'
+        self.lora_r_mapping = nn.Linear(in_features=rank, out_features=rank, bias=False)
+        # Initialize to identity matrix for LoRA-XS (preserves the SVD initialization initially)
+        self._init_r_mapping()
+
+        # --- End of LoRA-XS Core Logic ---
+
+        self.dropout = nn.Dropout(p=dropout) if dropout > 0.0 else nn.Identity()
+
+    def _init_r_mapping(self):
+        """Initialize the R mapping matrix to identity."""
+        with torch.no_grad():
+            self.lora_r_mapping.weight.data = torch.eye(
+                self.rank, self.rank,
+                dtype=self.lora_r_mapping.weight.dtype,
+                device=self.lora_r_mapping.weight.device
+            )
+
+    def initialize_parameters(self):
+        """
+        Re-initialize the trainable parameters. For LoRA-XS, this only affects
+        the r x r mapping matrix since A and B are frozen.
+        """
+        # Reset the mapping matrix to identity
+        self._init_r_mapping()
+
+    def to_empty(
+            self, *, device: Optional[Union[str, torch.device, int]], recurse: bool = True
+    ):
+        """Move the adapter components to an empty device."""
+        self.lora_a.to_empty(device=device, recurse=recurse)
+        self.lora_b.to_empty(device=device, recurse=recurse)
+        self.lora_r_mapping.to_empty(device=device, recurse=recurse)
+
+    def adapter_params(self) -> list[str]:
+        """
+        Return a list of strings corresponding to the names of the ``nn.Parameter`` s in
+        the model coming from the adapter.
+
+        For LoRA-XS this means only lora_r_mapping.weight (the r x r matrix).
+        """
+        return ["lora_r_mapping.weight"]
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x (torch.Tensor): input tensor with shape ``(..., in_dim)``
+
+        Returns:
+            torch.Tensor: output tensor with shape ``(..., out_dim)``
+        """
+        # Calculate the base model output
+        if self._quantize_base:
+            out = linear_nf4(input=x, weight=self.weight)
+            if self.use_bias:
+                out = out + self.bias
+        else:
+            out = F.linear(x, self.weight, self.bias)
+
+        if self.disabled:
+            return out
+
+        # Apply the LoRA-XS path: (alpha/r) * B * R * A * x
+        # Note: dropout is applied to the input as in standard LoRA
+        lora_out = self.lora_a(self.dropout(x))
+        lora_out = self.lora_r_mapping(lora_out)  # Apply the trainable r x r matrix
+        lora_out = self.lora_b(lora_out)
+        lora_out = (self.alpha / self.rank) * lora_out  # Apply scaling at the end
+
+        return out + lora_out
+
+
 class QATLoRALinear(LoRALinear):
     """
     LoRA linear layer with quantization-aware training (QAT) applied to the
