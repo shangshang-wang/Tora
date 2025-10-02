@@ -21,7 +21,7 @@ from torchtune.modules import (
 )
 
 
-from torchtune.modules.peft import DoRALinear, LORA_ATTN_MODULES, LoRALinear
+from torchtune.modules.peft import DoRALinear, DoRALinearCache, LORA_ATTN_MODULES, LoRALinear, LoRAXSLinear
 
 """
 Component builders for the Qwen2 model and popular variants such as LoRA.
@@ -178,6 +178,8 @@ def lora_qwen2(
     lora_alpha: float,
     lora_dropout: float = 0.0,
     use_dora: bool = False,
+    use_dora_cache: bool = False,
+    use_lora_xs: bool = False,
     # Quantization args
     quantize_base: bool = False,
 ) -> TransformerDecoder:
@@ -251,6 +253,8 @@ def lora_qwen2(
             lora_alpha=lora_alpha,
             lora_dropout=lora_dropout,
             use_dora=use_dora,
+            use_dora_cache=use_dora_cache,
+            use_lora_xs=use_lora_xs,
             quantize_base=quantize_base,
         )
 
@@ -262,6 +266,8 @@ def lora_qwen2(
                 lora_alpha=lora_alpha,
                 quantize_base=quantize_base,
                 use_dora=use_dora,
+                use_dora_cache=use_dora_cache,
+                use_lora_xs=use_lora_xs,
                 lora_dropout=lora_dropout,
             )
         else:
@@ -286,7 +292,16 @@ def lora_qwen2(
         output_proj = TiedLinear(tok_embeddings)
     else:
         # TODO: quantize_base is not applied to final output_proj currently.
-        adapter_cls = DoRALinear if use_dora else LoRALinear
+
+        if use_dora:
+            adapter_cls = DoRALinear
+        elif use_dora_cache:
+            adapter_cls = DoRALinearCache
+        elif use_lora_xs:
+            adapter_cls = LoRAXSLinear
+        else:
+            adapter_cls = LoRALinear
+
         output_proj = (
             adapter_cls(embed_dim, vocab_size, rank=lora_rank, alpha=lora_alpha, dropout=lora_dropout)
             if apply_lora_to_output
@@ -340,6 +355,8 @@ def lora_qwen2_self_attention(
     lora_alpha: float,
     lora_dropout: float = 0.0,
     use_dora: bool = False,
+    use_dora_cache: bool = False,
+    use_lora_xs: bool = False,
     quantize_base: bool = False,
 ) -> MultiHeadAttention:
     """
@@ -387,7 +404,16 @@ def lora_qwen2_self_attention(
 
     head_dim = head_dim or embed_dim // num_heads
     num_kv_heads = num_kv_heads if num_kv_heads else num_heads
-    adapter_cls = DoRALinear if use_dora else LoRALinear
+    
+    if use_dora:
+        adapter_cls = DoRALinear
+    elif use_dora_cache:
+        adapter_cls = DoRALinearCache
+    elif use_lora_xs:
+        adapter_cls = LoRAXSLinear
+    else:
+        adapter_cls = LoRALinear
+
     q_proj = (
         adapter_cls(
             embed_dim,
@@ -467,9 +493,20 @@ def lora_qwen2_mlp(
     lora_alpha: float,
     lora_dropout: float = 0.0,
     use_dora: bool = False,
+    use_dora_cache: bool = False,
+    use_lora_xs: bool = False,
     quantize_base: bool = False,
 ) -> FeedForward:
-    adapter_cls = DoRALinear if use_dora else LoRALinear
+
+    if use_dora:
+        adapter_cls = DoRALinear
+    elif use_dora_cache:
+        adapter_cls = DoRALinearCache
+    elif use_lora_xs:
+        adapter_cls = LoRAXSLinear
+    else:
+        adapter_cls = LoRALinear
+
     gate_proj = adapter_cls(
         in_dim=dim,
         out_dim=hidden_dim,

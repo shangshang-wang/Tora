@@ -399,6 +399,8 @@ def lora_qwen2_5_0_5b(
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
     use_dora: bool = False,
+    use_dora_cache: bool = False,
+    use_lora_xs: bool = False,
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -444,6 +446,8 @@ def lora_qwen2_5_0_5b(
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
         use_dora=use_dora,
+        use_dora_cache=use_dora_cache,
+        use_lora_xs=use_lora_xs,
         quantize_base=quantize_base,
     )
 
@@ -456,6 +460,8 @@ def lora_qwen2_5_1_5b_base(
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
     use_dora: bool = False,
+    use_dora_cache: bool = False,
+    use_lora_xs: bool = False,
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -505,6 +511,8 @@ def lora_qwen2_5_1_5b_base(
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
         use_dora=use_dora,
+        use_dora_cache=use_dora_cache,
+        use_lora_xs=use_lora_xs,
         quantize_base=quantize_base,
     )
 
@@ -517,6 +525,8 @@ def lora_qwen2_5_1_5b_instruct(
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
     use_dora: bool = False,
+    use_dora_cache: bool = False,
+    use_lora_xs: bool = False,
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -566,6 +576,8 @@ def lora_qwen2_5_1_5b_instruct(
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
         use_dora=use_dora,
+        use_dora_cache=use_dora_cache,
+        use_lora_xs=use_lora_xs,
         quantize_base=quantize_base,
     )
 
@@ -578,6 +590,8 @@ def lora_qwen2_5_3b(
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
     use_dora: bool = False,
+    use_dora_cache: bool = False,
+    use_lora_xs: bool = False,
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -623,6 +637,8 @@ def lora_qwen2_5_3b(
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
         use_dora=use_dora,
+        use_dora_cache=use_dora_cache,
+        use_lora_xs=use_lora_xs,
         quantize_base=quantize_base,
     )
 
@@ -635,6 +651,8 @@ def lora_qwen2_5_7b_base(
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
     use_dora: bool = False,
+    use_dora_cache: bool = False,
+    use_lora_xs: bool = False,
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -682,6 +700,8 @@ def lora_qwen2_5_7b_base(
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
         use_dora=use_dora,
+        use_dora_cache=use_dora_cache,
+        use_lora_xs=use_lora_xs,
         quantize_base=quantize_base,
     )
 
@@ -694,6 +714,8 @@ def lora_qwen2_5_7b_instruct(
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
     use_dora: bool = False,
+    use_dora_cache: bool = False,
+    use_lora_xs: bool = False,
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -741,6 +763,8 @@ def lora_qwen2_5_7b_instruct(
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
         use_dora=use_dora,
+        use_dora_cache=use_dora_cache,
+        use_lora_xs=use_lora_xs,
         quantize_base=quantize_base,
     )
 
@@ -753,6 +777,8 @@ def lora_qwen2_5_14b_base(
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
     use_dora: bool = False,
+    use_dora_cache: bool = False,
+    use_lora_xs: bool = False,
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -800,6 +826,8 @@ def lora_qwen2_5_14b_base(
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
         use_dora=use_dora,
+        use_dora_cache=use_dora_cache,
+        use_lora_xs=use_lora_xs,
         quantize_base=quantize_base,
     )
 
@@ -812,6 +840,8 @@ def lora_qwen2_5_14b_instruct(
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
     use_dora: bool = False,
+    use_dora_cache: bool = False,
+    use_lora_xs: bool = False,
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -859,6 +889,8 @@ def lora_qwen2_5_14b_instruct(
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
         use_dora=use_dora,
+        use_dora_cache=use_dora_cache,
+        use_lora_xs=use_lora_xs,
         quantize_base=quantize_base,
     )
 
@@ -871,6 +903,8 @@ def lora_qwen2_5_32b_base(
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
     use_dora: bool = False,
+    use_dora_cache: bool = False,
+    use_lora_xs: bool = False,
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -918,6 +952,8 @@ def lora_qwen2_5_32b_base(
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
         use_dora=use_dora,
+        use_dora_cache=use_dora_cache,
+        use_lora_xs=use_lora_xs,
         quantize_base=quantize_base,
     )
 
@@ -930,6 +966,8 @@ def lora_qwen2_5_32b_instruct(
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
     use_dora: bool = False,
+    use_dora_cache: bool = False,
+    use_lora_xs: bool = False,
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -977,6 +1015,8 @@ def lora_qwen2_5_32b_instruct(
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
         use_dora=use_dora,
+        use_dora_cach=use_dora_cache,
+        use_lora_xs=use_lora_xs,
         quantize_base=quantize_base,
     )
 
@@ -989,6 +1029,8 @@ def lora_qwen2_5_72b_base(
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
     use_dora: bool = False,
+    use_dora_cache: bool = False,
+    use_lora_xs: bool = False,
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -1036,6 +1078,8 @@ def lora_qwen2_5_72b_base(
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
         use_dora=use_dora,
+        use_dora_cache=use_dora_cache,
+        use_lora_xs=use_lora_xs,
         quantize_base=quantize_base,
     )
 
@@ -1048,6 +1092,8 @@ def lora_qwen2_5_72b_instruct(
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
     use_dora: bool = False,
+    use_dora_cache: bool = False,
+    use_lora_xs: bool = False,
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -1095,5 +1141,7 @@ def lora_qwen2_5_72b_instruct(
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
         use_dora=use_dora,
+        use_dora_cache=use_dora_cache,
+        use_lora_xs=use_lora_xs,
         quantize_base=quantize_base,
     )

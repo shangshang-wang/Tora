@@ -14,19 +14,23 @@ from ._utils import (  # noqa
     LORA_ATTN_MODULES,
     set_trainable_params,
     validate_missing_and_unexpected_for_lora,
+    print_lora_trainable_parameters
 )
-from .dora import DoRALinear
-from .lora import LoRALinear, QATLoRALinear, TrainableParams
+from .dora import DoRALinear, DoRALinearCache
+from .lora import LoRALinear, LoRAXSLinear, QATLoRALinear, TrainableParams
 
 
 __all__ = [
     "AdapterModule",
     "DoRALinear",
+    "DoRALinearCache",
     "LoRALinear",
+    "LoRAXSLinear",
     "QATLoRALinear",
     "get_adapter_params",
     "set_trainable_params",
     "validate_missing_and_unexpected_for_lora",
+    "print_lora_trainable_parameters",
     "disable_adapter",
     "get_adapter_state_dict",
     "get_merged_lora_ckpt",
