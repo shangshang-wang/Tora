@@ -415,3 +415,31 @@ def validate_missing_and_unexpected_for_lora(
         raise RuntimeError("Unexpected key loading base model")
     if lora_unexpected:
         raise RuntimeError("Unexpected key loading adapter")
+
+
+
+def print_lora_trainable_parameters(model):
+    """
+    Prints the number of trainable parameters in the model.
+    """
+    trainable_params = 0
+    all_param = 0
+    print("=" * 100)
+    print(f"{'Parameter Name':<60} {'Shape':<25} {'Count':<15}")
+    print("-" * 100)
+
+    for name, param in model.named_parameters():
+        num_params = param.numel()
+        all_param += num_params
+        if param.requires_grad:
+            trainable_params += num_params
+            # F-string formatting to align columns
+            print(f"{name:<60} {str(param.shape):<25} {num_params:,}")
+
+    print("-" * 100)
+    print(
+        f"Total Trainable Parameters: {trainable_params:,}\n"
+        f"Total Model Parameters:     {all_param:,}\n"
+        f"Trainable Percentage:       {100 * trainable_params / all_param:.4f}%"
+    )
+    print("=" * 100)
