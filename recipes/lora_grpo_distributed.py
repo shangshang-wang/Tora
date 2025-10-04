@@ -274,7 +274,7 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
         # initialize loss
         self._loss_fn = config.instantiate(cfg.loss)
         if self._compile:
-            training.compile_loss(self._loss_fn, verbose=self._is_rank_zero)
+            training.compile_loss(self._loss_fn, dynamic=True, verbose=self._is_rank_zero)
 
         # sampler and dataloader depend on the tokenizer and loss_fn and should be
         # setup after both of these are initialized
@@ -385,7 +385,7 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
         set_trainable_params(model, self.adapter_params)
 
         if self._compile:
-            training.compile_model(model, verbose=self._is_rank_zero)
+            training.compile_model(model, dynamic=True, verbose=self._is_rank_zero)
 
         if enable_activation_checkpointing:
             training.set_activation_checkpointing(

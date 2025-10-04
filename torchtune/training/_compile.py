@@ -24,6 +24,7 @@ log = get_logger("INFO")
 def compile_model(
     model: Union[TransformerDecoder, DeepFusionModel],
     verbose: bool = True,
+    dynamic: bool = False,
 ) -> None:
     """
     Utility to compile a transformer model inplace. On PyTorch nightlies we use per-layer compile
@@ -34,6 +35,7 @@ def compile_model(
             Can be a TransformerDecoder or DeepFusionModel; in the latter case only
             the model's decoder will be compiled.
         verbose (bool): Whether to log compile info. Default: True
+        dynamic (bool): Whether to use dynamic shapes. Default: False
     Returns:
         None
 
@@ -50,16 +52,21 @@ def compile_model(
         if isinstance(m, TransformerSelfAttentionLayer) or isinstance(
             m, TransformerCrossAttentionLayer
         ):
-            m.compile(backend=backend)
+            m.compile(backend=backend, dynamic=dynamic)
 
 
-def compile_loss(loss: nn.Module, verbose: bool = True) -> nn.Module:
+def compile_loss(
+        loss: nn.Module,
+        verbose: bool = True,
+        dynamic: bool = False
+) -> nn.Module:
     """
     Utility to compile and return loss function
 
     Args:
         loss (nn.Module): A loss function to compile.
         verbose (bool): Whether to log compile info. Default: True
+        dynamic (bool): Whether to use dynamic shapes. Default: False
     Returns:
         loss (nn.Module): Compiled loss function
     """
@@ -68,8 +75,8 @@ def compile_loss(loss: nn.Module, verbose: bool = True) -> nn.Module:
         log.info("Compiling loss with torch.compile...")
 
     if hasattr(loss, "apply_compile_strategy"):
-        loss = loss.apply_compile_strategy(backend=backend)
+        loss = loss.apply_compile_strategy(backend=backend, dynamic=dynamic)
     else:
-        loss = torch.compile(loss, backend=backend)
+        loss = torch.compile(loss, backend=backend, dynamic=dynamic)
 
     return loss
