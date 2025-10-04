@@ -11,6 +11,7 @@ import torch
 import torch.nn.functional as F
 
 from torch import nn
+from torch.distributed.tensor import DTensor
 
 from torchao.dtypes.nf4tensor import linear_nf4, to_nf4
 from torchtune.modules.low_precision import _register_nf4_dispatch_ops  # noqa: F401
@@ -135,10 +136,32 @@ class DoRALinear(nn.Module, AdapterModule):
             )
         base_weight = self.weight.to(self.lora_a.weight.dtype)
         lora_weight = self.lora_b.weight @ self.lora_a.weight
-        self.magnitude.copy_(self._get_weight_norm(base_weight, lora_weight))
+        weight_norm = self._get_weight_norm(base_weight, lora_weight)
+
+        if isinstance(self.magnitude, DTensor):
+            if not isinstance(weight_norm, DTensor):
+                device_mesh = self.magnitude.device_mesh
+                placements = self.magnitude.placements
+                # Convert local tensor to DTensor with same distribution as magnitude
+                weight_norm = DTensor.from_local(
+                    weight_norm,
+                    device_mesh,
+                    placements
+                )
+            self.magnitude.copy_(weight_norm)
+        else:
+            if isinstance(weight_norm, DTensor):
+                weight_norm = weight_norm.to_local()
+            self.magnitude.copy_(weight_norm)
 
     def _get_weight_norm(self, weight, lora_weight):
-        weight = weight + self.scaling * lora_weight
+        # Convert DTensors to local tensors if needed
+        if hasattr(weight, 'to_local'):
+            weight = weight.to_local()
+        if hasattr(lora_weight, 'to_local'):
+            lora_weight = lora_weight.to_local()
+
+        weight = weight.to(lora_weight.dtype) + self.scaling * lora_weight
         weight_norm = torch.linalg.norm(weight, dim=1).to(weight.dtype)
         return weight_norm
 
@@ -312,7 +335,15 @@ class DoRALinearCache(nn.Module, AdapterModule):
 
     @torch.no_grad()
     def initialize_dora_magnitude(self):
-        """Initialize DoRA magnitude vector."""
+        """
+        DoRA initializes the magnitude vector such that its outputs are initially
+        identical to standard LoRA's outputs.
+
+        This must be called after loading/initializing base model and LoRA params.
+
+        Raises:
+            RuntimeError: If base or LoRA parameters are still on meta device.
+        """
         if any(
                 [
                     self.weight.is_meta,
@@ -325,11 +356,32 @@ class DoRALinearCache(nn.Module, AdapterModule):
             )
         base_weight = self.weight.to(self.lora_a.weight.dtype)
         lora_weight = self.lora_b.weight @ self.lora_a.weight
-        self.magnitude.copy_(self._get_weight_norm(base_weight, lora_weight))
-        self._invalidate_cache()
+        weight_norm = self._get_weight_norm(base_weight, lora_weight)
+
+        if isinstance(self.magnitude, DTensor):
+            if not isinstance(weight_norm, DTensor):
+                device_mesh = self.magnitude.device_mesh
+                placements = self.magnitude.placements
+                # Convert local tensor to DTensor with same distribution as magnitude
+                weight_norm = DTensor.from_local(
+                    weight_norm,
+                    device_mesh,
+                    placements
+                )
+            self.magnitude.copy_(weight_norm)
+        else:
+            if isinstance(weight_norm, DTensor):
+                weight_norm = weight_norm.to_local()
+            self.magnitude.copy_(weight_norm)
 
     def _get_weight_norm(self, weight, lora_weight):
-        weight = weight + self.scaling * lora_weight
+        # Convert DTensors to local tensors if needed
+        if hasattr(weight, 'to_local'):
+            weight = weight.to_local()
+        if hasattr(lora_weight, 'to_local'):
+            lora_weight = lora_weight.to_local()
+
+        weight = weight.to(lora_weight.dtype) + self.scaling * lora_weight
         weight_norm = torch.linalg.norm(weight, dim=1).to(weight.dtype)
         return weight_norm
 
