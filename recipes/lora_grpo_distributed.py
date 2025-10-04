@@ -40,6 +40,9 @@ from tqdm import tqdm
 
 log = utils.get_logger("DEBUG")
 
+import torch._dynamo.config as dynamo_config
+dynamo_config.recompile_limit = 100
+
 
 class LoRAGRPORecipeDistributed(FTRecipeInterface):
     """
