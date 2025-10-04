@@ -177,9 +177,7 @@ def lora_qwen2(
     lora_rank: int,
     lora_alpha: float,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
-    use_dora_cache: bool = False,
-    use_lora_xs: bool = False,
+    lora_type: str = "lora", # "lora", "lora_xs", "dora", "dora_cache"
     # Quantization args
     quantize_base: bool = False,
 ) -> TransformerDecoder:
@@ -220,6 +218,7 @@ def lora_qwen2(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): LoRA dropout probability. Default: 0.0
+        lora_type (str): Which type of LoRA variant to use. Options are ``{"lora", "lora_xs", "dora", "dora_cache"}``.
         quantize_base: (bool): Whether to quantize base model weights or not. Only applied to base
             weights within linear layers LoRA is applied to. The final output linear projection is not
             supported for quantization currently.
@@ -252,9 +251,7 @@ def lora_qwen2(
             lora_rank=lora_rank,
             lora_alpha=lora_alpha,
             lora_dropout=lora_dropout,
-            use_dora=use_dora,
-            use_dora_cache=use_dora_cache,
-            use_lora_xs=use_lora_xs,
+            lora_type=lora_type,
             quantize_base=quantize_base,
         )
 
@@ -265,9 +262,7 @@ def lora_qwen2(
                 lora_rank=lora_rank,
                 lora_alpha=lora_alpha,
                 quantize_base=quantize_base,
-                use_dora=use_dora,
-                use_dora_cache=use_dora_cache,
-                use_lora_xs=use_lora_xs,
+                lora_type=lora_type,
                 lora_dropout=lora_dropout,
             )
         else:
@@ -291,13 +286,11 @@ def lora_qwen2(
             )
         output_proj = TiedLinear(tok_embeddings)
     else:
-        # TODO: quantize_base is not applied to final output_proj currently.
-
-        if use_dora:
+        if lora_type == "dora":
             adapter_cls = DoRALinear
-        elif use_dora_cache:
+        elif lora_type == "dora_cache":
             adapter_cls = DoRALinearCache
-        elif use_lora_xs:
+        elif lora_type == "lora_xs":
             adapter_cls = LoRAXSLinear
         else:
             adapter_cls = LoRALinear
@@ -354,9 +347,7 @@ def lora_qwen2_self_attention(
     lora_rank: int,
     lora_alpha: float,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
-    use_dora_cache: bool = False,
-    use_lora_xs: bool = False,
+    lora_type: str = "lora", # "lora", "lora_xs", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> MultiHeadAttention:
     """
@@ -389,6 +380,7 @@ def lora_qwen2_self_attention(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): LoRA dropout probability. Default: 0.0
+        lora_type (str): Which type of LoRA variant to use. Options are ``{"lora", "lora_xs", "dora", "dora_cache"}``.
         quantize_base (bool): Whether to quantize base model parameters for linear layers
             LoRA is being applied to. Default is ``False``.
 
@@ -404,12 +396,12 @@ def lora_qwen2_self_attention(
 
     head_dim = head_dim or embed_dim // num_heads
     num_kv_heads = num_kv_heads if num_kv_heads else num_heads
-    
-    if use_dora:
+
+    if lora_type == "dora":
         adapter_cls = DoRALinear
-    elif use_dora_cache:
+    elif lora_type == "dora_cache":
         adapter_cls = DoRALinearCache
-    elif use_lora_xs:
+    elif lora_type == "lora_xs":
         adapter_cls = LoRAXSLinear
     else:
         adapter_cls = LoRALinear
@@ -492,17 +484,15 @@ def lora_qwen2_mlp(
     lora_rank: int,
     lora_alpha: float,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
-    use_dora_cache: bool = False,
-    use_lora_xs: bool = False,
+    lora_type: str = "lora", # "lora", "lora_xs", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> FeedForward:
 
-    if use_dora:
+    if lora_type == "dora":
         adapter_cls = DoRALinear
-    elif use_dora_cache:
+    elif lora_type == "dora_cache":
         adapter_cls = DoRALinearCache
-    elif use_lora_xs:
+    elif lora_type == "lora_xs":
         adapter_cls = LoRAXSLinear
     else:
         adapter_cls = LoRALinear
