@@ -8,12 +8,12 @@
 #   tune download Qwen/Qwen2.5-3B --output-dir /tmp/Qwen2.5-3B
 #
 # To launch on 2 devices, run the following command from root:
-# tune run --nproc_per_node 2 lora_grpo_distributed --config qwen2_5/3B_lora_grpo
+# tune run --nproc_per_node 2 lora_grpo_distributed --config qwen2_5/3B_qlora_grpo
 #
 # You can add specific overrides through the command line. For example
 # to override the checkpointer directory while launching training
 # you can run:
-#   tune run --nproc_per_node 2 lora_grpo_distributed --config qwen2_5/3B_lora_grpo checkpointer.checkpoint_dir=<YOUR_CHECKPOINT_DIR>
+#   tune run --nproc_per_node 2 lora_grpo_distributed --config qwen2_5/3B_qlora_grpo checkpointer.checkpoint_dir=<YOUR_CHECKPOINT_DIR>
 #
 # This config works best when the model is being fine-tuned on 2+ GPUs.
 #
@@ -43,7 +43,7 @@ shuffle: False
 
 # Model Arguments
 model:
-  _component_: torchtune.models.qwen2_5.lora_qwen2_5_3b
+  _component_: torchtune.models.qwen2_5.qlora_qwen2_5_3b
   lora_attn_modules: ['q_proj', 'v_proj', 'output_proj']
   apply_lora_to_mlp: True
   apply_lora_to_output: False

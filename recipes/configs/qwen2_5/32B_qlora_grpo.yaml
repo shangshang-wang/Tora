@@ -1,19 +1,19 @@
 # Config for sync multi-node GRPO in lora_grpo_distributed.py
-# using a Qwen-3B Base model (which is known to train quickly on this task).
+# using a Qwen-32B Base model (which is known to train quickly on this task).
 #
 # Also check out the async implementation of this workflow in this directory.
 #
 # This config assumes that you've run the following command before launching
 # this run:
-#   tune download Qwen/Qwen2.5-3B --output-dir /tmp/Qwen2.5-3B
+#   tune download Qwen/Qwen2.5-32B --output-dir /tmp/Qwen2.5-32B
 #
 # To launch on 2 devices, run the following command from root:
-# tune run --nproc_per_node 2 lora_grpo_distributed --config qwen2_5/3B_lora_grpo
+# tune run --nproc_per_node 2 lora_grpo_distributed --config qwen2_5/32B_qlora_grpo
 #
 # You can add specific overrides through the command line. For example
 # to override the checkpointer directory while launching training
 # you can run:
-#   tune run --nproc_per_node 2 lora_grpo_distributed --config qwen2_5/3B_lora_grpo checkpointer.checkpoint_dir=<YOUR_CHECKPOINT_DIR>
+#   tune run --nproc_per_node 2 lora_grpo_distributed --config qwen2_5/32B_qlora_grpo checkpointer.checkpoint_dir=<YOUR_CHECKPOINT_DIR>
 #
 # This config works best when the model is being fine-tuned on 2+ GPUs.
 #
@@ -25,13 +25,13 @@ base_output_dir: ${oc.env:BASE_OUTPUT_DIR}
 name: ${oc.env:CONFIG_NAME}
 
 output_dir: ${base_output_dir}/${name}
-base_model_path: ${base_model_dir}/Qwen2.5-3B  # Use this to train from the slightly trained SFT model
+base_model_path: ${base_model_dir}/Qwen2.5-32B  # Use this to train from the slightly trained SFT model
 
 # Tokenizer
 tokenizer:
   _component_: torchtune.models.qwen2_5.qwen2_5_tokenizer
-  path: ${base_model_dir}/Qwen2.5-3B/vocab.json
-  merges_file: ${base_model_dir}/Qwen2.5-3B/merges.txt
+  path: ${base_model_dir}/Qwen2.5-32B/vocab.json
+  merges_file: ${base_model_dir}/Qwen2.5-32B/merges.txt
   max_seq_len: 1024
 
 # Dataset
@@ -43,7 +43,7 @@ shuffle: False
 
 # Model Arguments
 model:
-  _component_: torchtune.models.qwen2_5.lora_qwen2_5_3b
+  _component_: torchtune.models.qwen2_5.qlora_qwen2_5_32b_base
   lora_attn_modules: ['q_proj', 'v_proj', 'output_proj']
   apply_lora_to_mlp: True
   apply_lora_to_output: False
@@ -56,8 +56,23 @@ checkpointer:
   _component_: torchtune.training.FullModelHFCheckpointer
   checkpoint_dir: ${base_model_path}
   checkpoint_files: [
-    model-00001-of-00002.safetensors,
-    model-00002-of-00002.safetensors,
+    model-00001-of-00017.safetensors,
+    model-00002-of-00017.safetensors,
+    model-00003-of-00017.safetensors,
+    model-00004-of-00017.safetensors,
+    model-00005-of-00017.safetensors,
+    model-00006-of-00017.safetensors,
+    model-00007-of-00017.safetensors,
+    model-00008-of-00017.safetensors,
+    model-00009-of-00017.safetensors,
+    model-00010-of-00017.safetensors,
+    model-00011-of-00017.safetensors,
+    model-00012-of-00017.safetensors,
+    model-00013-of-00017.safetensors,
+    model-00014-of-00017.safetensors,
+    model-00015-of-00017.safetensors,
+    model-00016-of-00017.safetensors,
+    model-00017-of-00017.safetensors,
   ]
   recipe_checkpoint: null
   output_dir: ${output_dir}
@@ -68,8 +83,23 @@ ref_checkpointer:
   _component_: torchtune.training.FullModelHFCheckpointer
   checkpoint_dir: ${base_model_path}
   checkpoint_files: [
-    model-00001-of-00002.safetensors,
-    model-00002-of-00002.safetensors,
+    model-00001-of-00017.safetensors,
+    model-00002-of-00017.safetensors,
+    model-00003-of-00017.safetensors,
+    model-00004-of-00017.safetensors,
+    model-00005-of-00017.safetensors,
+    model-00006-of-00017.safetensors,
+    model-00007-of-00017.safetensors,
+    model-00008-of-00017.safetensors,
+    model-00009-of-00017.safetensors,
+    model-00010-of-00017.safetensors,
+    model-00011-of-00017.safetensors,
+    model-00012-of-00017.safetensors,
+    model-00013-of-00017.safetensors,
+    model-00014-of-00017.safetensors,
+    model-00015-of-00017.safetensors,
+    model-00016-of-00017.safetensors,
+    model-00017-of-00017.safetensors,
   ]
   recipe_checkpoint: null
   output_dir: ${output_dir}/ref  # shouldn't be used?
@@ -97,7 +127,7 @@ clip_grad_norm: 1.0
 epochs: 10
 optimizer:
   _component_: torch.optim.AdamW
-  lr: 5e-4
+  lr: 1e-4
   fused: True
 lr_scheduler:
   _component_: torchtune.training.lr_schedulers.get_cosine_schedule_with_warmup

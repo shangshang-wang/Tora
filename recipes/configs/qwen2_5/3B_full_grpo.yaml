@@ -1,4 +1,4 @@
-# Config for sync multi-node GRPO in grpo_full_finetune_distributed.py
+# Config for sync multi-node GRPO in full_grpo_distributed.py
 # using a Qwen-3B Base model (which is known to train quickly on this task).
 #
 # Also check out the async implementation of this workflow in this directory.
@@ -7,22 +7,22 @@
 # this run:
 #   tune download Qwen/Qwen2.5-3B --output-dir /tmp/Qwen2.5-3B
 #
-# To launch on 4 devices, run the following command from root:
-# tune run --nproc_per_node 4 grpo_full_finetune_distributed --config dev/qwen3B_sync_grpo
+# To launch on 2 devices, run the following command from root:
+# tune run --nproc_per_node 2 full_grpo_distributed --config qwen2_5/3B_full_grpo
 #
 # You can add specific overrides through the command line. For example
 # to override the checkpointer directory while launching training
 # you can run:
-#   tune run --nproc_per_node 4 grpo_full_finetune_distributed --config dev/qwen3B_sync_grpo checkpointer.checkpoint_dir=<YOUR_CHECKPOINT_DIR>
+#   tune run --nproc_per_node 2 full_grpo_distributed --config qwen2_5/3B_full_grpo checkpointer.checkpoint_dir=<YOUR_CHECKPOINT_DIR>
 #
 # This config works best when the model is being fine-tuned on 2+ GPUs.
 #
 # Furthermore, you can launch it on multiple nodes by going to recipes/dev/ and using
 #  sbatch multinode_grpo.sbatch
 
-base_model_dir: /project2/neiswang_1391/shangsha/reasoning/Tora/ckpts/qwen2_5
-base_output_dir: /project2/neiswang_1391/shangsha/reasoning/Tora/outputs/qwen2_5
-name: full_grpo_qwen2_5_3b
+base_model_dir: ${oc.env:BASE_MODEL_DIR}
+base_output_dir: ${oc.env:BASE_OUTPUT_DIR}
+name: ${oc.env:CONFIG_NAME}
 
 output_dir: ${base_output_dir}/${name}
 base_model_path: ${base_model_dir}/Qwen2.5-3B  # Use this to train from the slightly trained SFT model
@@ -70,7 +70,7 @@ ref_checkpointer:
 
 
 resume_from_checkpoint: False
-save_every_n_epochs: 50
+save_every_n_epochs: 1
 
 # Fine-tuning arguments
 batch_size: 2

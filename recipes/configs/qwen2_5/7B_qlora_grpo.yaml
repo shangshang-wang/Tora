@@ -1,37 +1,37 @@
-# Config for sync multi-node GRPO in grpo_full_finetune_distributed.py
-# using a Qwen-3B Base model (which is known to train quickly on this task).
+# Config for sync multi-node GRPO in lora_grpo_distributed.py
+# using a Qwen-7B Base model (which is known to train quickly on this task).
 #
 # Also check out the async implementation of this workflow in this directory.
 #
 # This config assumes that you've run the following command before launching
 # this run:
-#   tune download Qwen/Qwen2.5-3B --output-dir /tmp/Qwen2.5-3B
+#   tune download Qwen/Qwen2.5-7B --output-dir /tmp/Qwen2.5-7B
 #
-# To launch on 4 devices, run the following command from root:
-# tune run --nproc_per_node 4 grpo_full_finetune_distributed --config dev/qwen3B_sync_grpo
+# To launch on 2 devices, run the following command from root:
+# tune run --nproc_per_node 2 lora_grpo_distributed --config qwen2_5/7B_qlora_grpo
 #
 # You can add specific overrides through the command line. For example
 # to override the checkpointer directory while launching training
 # you can run:
-#   tune run --nproc_per_node 4 grpo_full_finetune_distributed --config dev/qwen3B_sync_grpo checkpointer.checkpoint_dir=<YOUR_CHECKPOINT_DIR>
+#   tune run --nproc_per_node 2 lora_grpo_distributed --config qwen2_5/7B_qlora_grpo checkpointer.checkpoint_dir=<YOUR_CHECKPOINT_DIR>
 #
 # This config works best when the model is being fine-tuned on 2+ GPUs.
 #
 # Furthermore, you can launch it on multiple nodes by going to recipes/dev/ and using
 #  sbatch multinode_grpo.sbatch
 
-base_model_dir: /project2/neiswang_1391/shangsha/reasoning/Tora/ckpts/qwen2_5
-base_output_dir: /project2/neiswang_1391/shangsha/reasoning/Tora/outputs/lora_qwen2_5
-name: lora_grpo_qwen2_5_3b
+base_model_dir: ${oc.env:BASE_MODEL_DIR}
+base_output_dir: ${oc.env:BASE_OUTPUT_DIR}
+name: ${oc.env:CONFIG_NAME}
 
 output_dir: ${base_output_dir}/${name}
-base_model_path: ${base_model_dir}/Qwen2.5-3B  # Use this to train from the slightly trained SFT model
+base_model_path: ${base_model_dir}/Qwen2.5-7B  # Use this to train from the slightly trained SFT model
 
 # Tokenizer
 tokenizer:
   _component_: torchtune.models.qwen2_5.qwen2_5_tokenizer
-  path: ${base_model_dir}/Qwen2.5-3B/vocab.json
-  merges_file: ${base_model_dir}/Qwen2.5-3B/merges.txt
+  path: ${base_model_dir}/Qwen2.5-7B/vocab.json
+  merges_file: ${base_model_dir}/Qwen2.5-7B/merges.txt
   max_seq_len: 1024
 
 # Dataset
@@ -43,22 +43,23 @@ shuffle: False
 
 # Model Arguments
 model:
-  _component_: torchtune.models.qwen2_5.lora_qwen2_5_3b
+  _component_: torchtune.models.qwen2_5.qlora_qwen2_5_7b_base
   lora_attn_modules: ['q_proj', 'v_proj', 'output_proj']
   apply_lora_to_mlp: True
   apply_lora_to_output: False
-  lora_rank: 2  # higher increases accuracy and memory
-  lora_alpha: 4  # usually alpha=2*rank
+  lora_rank: 1  # higher increases accuracy and memory
+  lora_alpha: 2  # usually alpha=2*rank
   lora_dropout: 0.0
-#  use_dora: True
-  use_dora_cache: True
+  lora_type: "lora" # "lora", "lora_xs", "dora", "dora_cache"
 
 checkpointer:
   _component_: torchtune.training.FullModelHFCheckpointer
   checkpoint_dir: ${base_model_path}
   checkpoint_files: [
-    model-00001-of-00002.safetensors,
-    model-00002-of-00002.safetensors,
+    model-00001-of-00004.safetensors,
+    model-00002-of-00004.safetensors,
+    model-00003-of-00004.safetensors,
+    model-00004-of-00004.safetensors,
   ]
   recipe_checkpoint: null
   output_dir: ${output_dir}
@@ -69,8 +70,10 @@ ref_checkpointer:
   _component_: torchtune.training.FullModelHFCheckpointer
   checkpoint_dir: ${base_model_path}
   checkpoint_files: [
-    model-00001-of-00002.safetensors,
-    model-00002-of-00002.safetensors,
+    model-00001-of-00004.safetensors,
+    model-00002-of-00004.safetensors,
+    model-00003-of-00004.safetensors,
+    model-00004-of-00004.safetensors,
   ]
   recipe_checkpoint: null
   output_dir: ${output_dir}/ref  # shouldn't be used?
@@ -79,7 +82,7 @@ fsdp_reshard_after_forward: False
 
 
 resume_from_checkpoint: False
-save_every_n_epochs: 50
+save_every_n_epochs: 1
 
 # Fine-tuning arguments
 batch_size: 2
@@ -98,7 +101,7 @@ clip_grad_norm: 1.0
 epochs: 10
 optimizer:
   _component_: torch.optim.AdamW
-  lr: 1e-5
+  lr: 1e-4
   fused: True
 lr_scheduler:
   _component_: torchtune.training.lr_schedulers.get_cosine_schedule_with_warmup

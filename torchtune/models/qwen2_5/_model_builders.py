@@ -1130,3 +1130,15 @@ Builder for creating a Qwen2.5 7B base model with QLoRA enabled. Base model weig
 that LoRA is applied to are quantized per the QLoRA paper: https://arxiv.org/abs/2305.14314.
 Please see `lora_qwen2_5_7b_base` for full API arguments.
 """
+qlora_qwen2_5_14b_base = partial(lora_qwen2_5_14b_base, quantize_base=True)
+qlora_qwen2_5_14b_base.__doc__ = """
+Builder for creating a Qwen2.5 14B base model with QLoRA enabled. Base model weights in linear layers
+that LoRA is applied to are quantized per the QLoRA paper: https://arxiv.org/abs/2305.14314.
+Please see `lora_qwen2_5_14b_base` for full API arguments.
+"""
+qlora_qwen2_5_32b_base = partial(lora_qwen2_5_32b_base, quantize_base=True)
+qlora_qwen2_5_32b_base.__doc__ = """
+Builder for creating a Qwen2.5 32B base model with QLoRA enabled. Base model weights in linear layers
+that LoRA is applied to are quantized per the QLoRA paper: https://arxiv.org/abs/2305.14314.
+Please see `lora_qwen2_5_32b_base` for full API arguments.
+"""
