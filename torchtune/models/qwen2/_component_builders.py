@@ -8,6 +8,7 @@ from functools import partial
 from typing import Optional
 from torchtune.modules.common_utils import reparametrize_as_dtype_state_dict_post_hook
 
+import torch
 from torch import nn
 from torchtune.modules.transformer import TransformerDecoder
 from torchtune.models.qwen2._positional_embeddings import Qwen2RotaryPositionalEmbeddings
@@ -229,7 +230,6 @@ def lora_qwen2(
 
     Raises:
         ValueError: if ``apply_lora_to_output`` and ``tie_word_embeddings``.
-
     """
     layers = nn.ModuleList()
     for _ in range(num_layers):
@@ -296,7 +296,14 @@ def lora_qwen2(
             adapter_cls = LoRALinear
 
         output_proj = (
-            adapter_cls(embed_dim, vocab_size, rank=lora_rank, alpha=lora_alpha, dropout=lora_dropout)
+            adapter_cls(
+                embed_dim,
+                vocab_size,
+                rank=lora_rank,
+                alpha=lora_alpha,
+                dropout=lora_dropout,
+                quantize_base=quantize_base
+            )
             if apply_lora_to_output
             else nn.Linear(embed_dim, vocab_size, bias=False)
         )
@@ -313,12 +320,26 @@ def lora_qwen2(
     if quantize_base:
         # For QLoRA, we reparametrize 4-bit tensors to higher precision, and offload to CPU on the fly
         # so as to not increase peak memory
+        dtype = None
+
+        if hasattr(model, 'tok_embeddings') and model.tok_embeddings.weight.dtype != torch.uint8:
+            dtype = model.tok_embeddings.weight.dtype
+
+        if dtype is None:
+            for layer in model.layers:
+                if hasattr(layer, 'sa_norm'):
+                    dtype = layer.sa_norm.weight.dtype
+                    break
+
+        if dtype is None:
+            dtype = torch.bfloat16
+
+        print(f"QLoRA: Reparametrizing quantized tensors to {dtype} and offloading to CPU on the fly")
+
         model._register_state_dict_hook(
             partial(
                 reparametrize_as_dtype_state_dict_post_hook,
-                # TODO this is clowny, figure out a better way to get what precision the rest
-                # of the model is in
-                dtype=tok_embeddings.weight.dtype,
+                dtype=dtype,
                 offload_to_cpu=True,
             )
         )
