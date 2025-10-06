@@ -17,7 +17,7 @@ from ._utils import (  # noqa
     print_lora_trainable_parameters
 )
 from .dora import DoRALinear, DoRALinearCache
-from .lora import LoRALinear, LoRAXSLinear, QATLoRALinear, TrainableParams
+from .lora import LoRALinear, QATLoRALinear, TrainableParams
 
 
 __all__ = [
@@ -25,7 +25,6 @@ __all__ = [
     "DoRALinear",
     "DoRALinearCache",
     "LoRALinear",
-    "LoRAXSLinear",
     "QATLoRALinear",
     "get_adapter_params",
     "set_trainable_params",

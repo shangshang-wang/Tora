@@ -70,7 +70,7 @@ ref_checkpointer:
 
 
 resume_from_checkpoint: False
-save_every_n_epochs: 1
+save_every_n_epochs: 50
 
 # Fine-tuning arguments
 batch_size: 2

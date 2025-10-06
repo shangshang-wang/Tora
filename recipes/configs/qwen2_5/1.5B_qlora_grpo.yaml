@@ -50,7 +50,7 @@ model:
   lora_rank: 1  # higher increases accuracy and memory
   lora_alpha: 2  # usually alpha=2*rank
   lora_dropout: 0.0
-  lora_type: "lora" # "lora", "lora_xs", "dora", "dora_cache"
+  lora_type: "lora" # "lora", "dora", "dora_cache"
 
 checkpointer:
   _component_: torchtune.training.FullModelHFCheckpointer

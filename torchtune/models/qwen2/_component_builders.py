@@ -22,7 +22,7 @@ from torchtune.modules import (
 )
 
 
-from torchtune.modules.peft import DoRALinear, DoRALinearCache, LORA_ATTN_MODULES, LoRALinear, LoRAXSLinear
+from torchtune.modules.peft import DoRALinear, DoRALinearCache, LORA_ATTN_MODULES, LoRALinear
 
 """
 Component builders for the Qwen2 model and popular variants such as LoRA.
@@ -178,7 +178,7 @@ def lora_qwen2(
     lora_rank: int,
     lora_alpha: float,
     lora_dropout: float = 0.0,
-    lora_type: str = "lora", # "lora", "lora_xs", "dora", "dora_cache"
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     # Quantization args
     quantize_base: bool = False,
 ) -> TransformerDecoder:
@@ -219,7 +219,7 @@ def lora_qwen2(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): LoRA dropout probability. Default: 0.0
-        lora_type (str): Which type of LoRA variant to use. Options are ``{"lora", "lora_xs", "dora", "dora_cache"}``.
+        lora_type (str): Which type of LoRA variant to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base: (bool): Whether to quantize base model weights or not. Only applied to base
             weights within linear layers LoRA is applied to. The final output linear projection is not
             supported for quantization currently.
@@ -290,8 +290,6 @@ def lora_qwen2(
             adapter_cls = DoRALinear
         elif lora_type == "dora_cache":
             adapter_cls = DoRALinearCache
-        elif lora_type == "lora_xs":
-            adapter_cls = LoRAXSLinear
         else:
             adapter_cls = LoRALinear
 
@@ -368,7 +366,7 @@ def lora_qwen2_self_attention(
     lora_rank: int,
     lora_alpha: float,
     lora_dropout: float = 0.0,
-    lora_type: str = "lora", # "lora", "lora_xs", "dora", "dora_cache"
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> MultiHeadAttention:
     """
@@ -401,7 +399,7 @@ def lora_qwen2_self_attention(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): LoRA dropout probability. Default: 0.0
-        lora_type (str): Which type of LoRA variant to use. Options are ``{"lora", "lora_xs", "dora", "dora_cache"}``.
+        lora_type (str): Which type of LoRA variant to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base (bool): Whether to quantize base model parameters for linear layers
             LoRA is being applied to. Default is ``False``.
 
@@ -422,8 +420,6 @@ def lora_qwen2_self_attention(
         adapter_cls = DoRALinear
     elif lora_type == "dora_cache":
         adapter_cls = DoRALinearCache
-    elif lora_type == "lora_xs":
-        adapter_cls = LoRAXSLinear
     else:
         adapter_cls = LoRALinear
 
@@ -505,7 +501,7 @@ def lora_qwen2_mlp(
     lora_rank: int,
     lora_alpha: float,
     lora_dropout: float = 0.0,
-    lora_type: str = "lora", # "lora", "lora_xs", "dora", "dora_cache"
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> FeedForward:
 
@@ -513,8 +509,6 @@ def lora_qwen2_mlp(
         adapter_cls = DoRALinear
     elif lora_type == "dora_cache":
         adapter_cls = DoRALinearCache
-    elif lora_type == "lora_xs":
-        adapter_cls = LoRAXSLinear
     else:
         adapter_cls = LoRALinear
 
