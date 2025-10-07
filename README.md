@@ -42,37 +42,37 @@ The learning rate for LoRA-based methods was set 20 times higher than that used 
 <table>
   <thead>
     <tr>
-      <th rowspan=2 style="text-align:center;">Qwen2.5 Model</th>
-      <th rowspan=2 style="text-align:center;">Setting</th>
-      <th rowspan=2 style="text-align:center;">Peak Memory/gpu</th>
-      <th colspan=2 style="text-align:center;">Generated Tokens/sec</th>
-      <th colspan=2 style="text-align:center;">Secs/grad step</th>
+      <th rowspan=2 align="center">Qwen2.5 Model</th>
+      <th rowspan=2 align="center">Setting</th>
+      <th rowspan=2 align="center">Peak Memory/gpu</th>
+      <th colspan=2 align="center">Generated Tokens/sec</th>
+      <th colspan=2 align="center">Secs/grad step</th>
     </tr>
     <tr>
-      <th style="text-align:center;">Standard</th>
-      <th style="text-align:center;">Compiled</th>
-      <th style="text-align:center;">Standard</th>
-      <th style="text-align:center;">Compiled</th>
+      <th align="center">Standard</th>
+      <th align="center">Compiled</th>
+      <th align="center">Standard</th>
+      <th align="center">Compiled</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td style="text-align:center;">1.5B</td>
-      <td style="text-align:center;">Full</td>
-      <td style="text-align:center;">~16.5 GB</td>
-      <td style="text-align:center;">24.4</td>
-      <td style="text-align:center;">39.3</td>
-      <td style="text-align:center;">69.2</td>
-      <td style="text-align:center;">77.5</td>
+      <td align="center">1.5B</td>
+      <td align="center">Full</td>
+      <td align="center">~16.5 GB</td>
+      <td align="center">24.4</td>
+      <td align="center">39.3</td>
+      <td align="center">69.2</td>
+      <td align="center">77.5</td>
     </tr>
     <tr>
-      <td style="text-align:center;">3B</td>
-      <td style="text-align:center;">Full</td>
-      <td style="text-align:center;">~19.6 GB</td>
-      <td style="text-align:center;">17.7</td>
-      <td style="text-align:center;">25.6</td>
-      <td style="text-align:center;">63.5</td>
-      <td style="text-align:center;">72.5</td>
+      <td align="center">3B</td>
+      <td align="center">Full</td>
+      <td align="center">~19.6 GB</td>
+      <td align="center">17.7</td>
+      <td align="center">25.6</td>
+      <td align="center">63.5</td>
+      <td align="center">72.5</td>
     </tr>
   </tbody>
 </table>
