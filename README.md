@@ -1,20 +1,21 @@
 # Tora: Torchtune-LoRA for RL
 
-[**Overview**](#overview) | [**Training Dynamics**](#training-dynamics) | [**Benchmarking**](#memory-and-efficiency-benchmarking) | [**Get Started**](#get-started) |  [**Behind the Name**](#behind-the-name) |
+[**Overview**](#overview) | [**Training Dynamics**](#training-dynamics) | [**Benchmarking**](#memory-and-efficiency-benchmarking) | [**Getting Started**](#getting-started) |  [**Behind the Name**](#behind-the-name)
 
-Tora is a project built on [torchtune](https://github.com/meta-pytorch/torchtune) that specializes in LoRA-based RL methods for post-training.
+Tora is a project built on [torchtune](https://github.com/meta-pytorch/torchtune) that provides LoRA-based RL methods for post-training.
 
-Building on the robust foundation of the torchtune library, this repository adapts and extends its capabilities for RL post-training.
-Tora integrates PEFT methods—such as (Q)LoRA and (Q)DoRA—into the RL workflow.
-This provides an efficient and memory-friendly framework that enables researchers to reduce the computational resources required for fine-tuning large language models via RL.
+Building on the torchtune library, Tora extends its functionality for RL post-training.
+It integrates PEFT methods like (Q)LoRA and (Q)DoRA into RL, providing an efficient and
+memory-friendly framework.
+Tora enables researchers to reduce the computational resources required for fine-tuning large language models via RL.
 
-**Awesome List: LoRA for RL**
+**📚 Key References: LoRA for RL**
 * *October 2025*: LoRA Without Regret by Thinking Machines. [link](https://thinkingmachines.ai/blog/lora/)
 * *May 2025*: Tina: Tiny Reasoning Models via LoRA. [link](https://github.com/shangshang-wang/Tina)
 
 ## Overview
 
-The following table summarizes the key features of different RL methods and LoRA-based techniques supported in Tora now.
+The following table summarizes the key features of RL methods and LoRA-based techniques supported in Tora.
 
 | RL Method | Type of Weight Update | Torch Model Compile | Multiple Devices with One Node |
 |-----------|-----------------------|:-------------------:|:------------------------------:|
@@ -23,28 +24,27 @@ The following table summarizes the key features of different RL methods and LoRA
 |           | (Q)DoRA               |          ✅          |               ✅                |
 |           | (Q)DoRA w/ Cache      |          ❌          |               ✅                |
 
-The standard DoRA layer in torchtune ([link](https://github.com/meta-pytorch/torchtune/blob/main/torchtune/modules/peft/dora.py)) recalculates the weight norm and magnitude scale on every forward pass. This is inefficient for GRPO's completion generation step, as these values remain static between weight updates.
+**DoRA w/ Cache:** The standard DoRA layer in torchtune ([link](https://github.com/meta-pytorch/torchtune/blob/main/torchtune/modules/peft/dora.py)) recalculates the weight norm and magnitude scale on every forward pass. This is inefficient for GRPO's completion generation step, as these values remain static between weight updates.
 DoRA w/ Cache optimizes this by caching these expensive computations. It computes the values once and reuses them on subsequent forward passes, avoiding redundant calculations and significantly improving performance. However, the current caching implementation is not compatible with torch.compile.
 
 ## LoRA vs Full-Parameter Comparison
 
 Unless specified otherwise, our experimental settings are as follows:
+* We used Qwen2.5 base models in five sizes: 1.5B, 3B, 7B, 14B, and 32B parameters.
 * All experiments were conducted on two NVIDIA RTX A40 GPUs using the GSM8K training dataset.
 * We used a per-GPU batch size of 2 and a generation sequence length of 512.
-* We utilized Qwen2.5 base models in five sizes: 1.5B, 3B, 7B, 14B, and 32B parameters.
 * For all LoRA-based methods, LoRA was applied to all layers with a rank of 1, an alpha of 2, and zero dropout.
-* The `Q` prefix in QLoRA and QDoRA signifies that the base model was quantized to 4-bits.
+* In QLoRA and QDoRA, the base model was quantized to 4-bits.
 * We enabled activation checkpointing and used Fully Sharded Data Parallelism (FSDP) across all experiments.
 * The learning rate for LoRA-based methods was set to 20x that of full-parameter GRPO training.
 
 ### Training Dynamics
 
-We show the reward and response length dynamics during GRPO training of Qwen2.5-3B with different methods on GSM8K.
+We show the reward dynamics during GRPO training of Qwen2.5-3B with different methods on GSM8K.
 From the results, we can see that LoRA-based methods (with rank 1), even with base model quantization, achieve comparable performance with full-parameter GRPO training.
 
 <p align="center">
-  <img src="assets/reward.png" alt="reward" width="500">
-  <img src="assets/response-length.png" alt="response length" width="500">
+  <img src="assets/reward.png" alt="reward" width="600">
 </p>
 
 ### Memory and Efficiency Benchmarking
@@ -56,7 +56,7 @@ In the tables below, we benchmark the peak memory usage per GPU, the number of g
 <table>
   <thead>
     <tr>
-      <th rowspan=2 align="center">Qwen2.5 Model</th>
+      <th rowspan=2 align="center">Model Size</th>
       <th rowspan=2 align="center">Setting</th>
       <th rowspan=2 align="center">Peak Memory/gpu</th>
       <th colspan=2 align="center">Generated Tokens/sec</th>
@@ -96,7 +96,7 @@ In the tables below, we benchmark the peak memory usage per GPU, the number of g
 <table>
   <thead>
     <tr>
-      <th rowspan=2 align="center">Qwen2.5 Model</th>
+      <th rowspan=2 align="center">Model Size</th>
       <th rowspan=2 align="center">Setting</th>
       <th rowspan=2 align="center">Peak Memory/gpu</th>
       <th colspan=2 align="center">Generated Tokens/sec</th>
@@ -190,7 +190,7 @@ In the tables below, we benchmark the peak memory usage per GPU, the number of g
 <table>
   <thead>
     <tr>
-      <th rowspan=2 align="center">Qwen2.5 Model</th>
+      <th rowspan=2 align="center">Model Size</th>
       <th rowspan=2 align="center">Setting</th>
       <th rowspan=2 align="center">Peak Memory/gpu</th>
       <th colspan=2 align="center">Generated Tokens/sec</th>
@@ -286,7 +286,7 @@ DoRA w/ Cache significantly speeds up the generation process by caching intermed
 <table>
   <thead>
     <tr>
-      <th align="center">Qwen2.5 Model</th>
+      <th align="center">Model Size</th>
       <th align="center">Setting</th>
       <th align="center">Peak Memory/gpu</th>
       <th align="center">Generated Tokens/sec</th>
@@ -353,7 +353,7 @@ DoRA w/ Cache significantly speeds up the generation process by caching intermed
   </tbody>
 </table>
 
-## Get Started
+## Getting Started
 
 Clone the repository and install the required packages.
 
@@ -390,5 +390,6 @@ tune run --nproc_per_node 2 lora_grpo_distributed --config qwen2_5/1.5B_lora_grp
 
 The name Tora (虎) means Tiger in Japanese. It's also a blend of **To**rchTune and Lo**RA**. 
 The name is inspired by the film _Crouching Tiger, Hidden Dragon_, which refers to masters with hidden strengths.
-This symbolism perfectly captures the role of LoRA in RL post-training.
-By updating only a tiny fraction of a model's parameters, LoRA unleashes significant performance gains—a "crouching tiger" of potential within the base model.
+This symbolism captures the role of LoRA in RL post-training: by updating only a tiny
+fraction of a model's parameters, LoRA unleashes significant performance gains—a
+"crouching tiger" of potential within the base model.
