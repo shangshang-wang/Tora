@@ -82,91 +82,91 @@ The learning rate for LoRA-based methods was set 20 times higher than that used 
 <table>
   <thead>
     <tr>
-      <th rowspan=2 style="text-align:center;">Qwen2.5 Model</th>
-      <th rowspan=2 style="text-align:center;">Setting</th>
-      <th rowspan=2 style="text-align:center;">Peak Memory/gpu</th>
-      <th colspan=2 style="text-align:center;">Generated Tokens/sec</th>
-      <th colspan=2 style="text-align:center;">Secs/grad step</th>
+      <th rowspan=2 align="center">Qwen2.5 Model</th>
+      <th rowspan=2 align="center">Setting</th>
+      <th rowspan=2 align="center">Peak Memory/gpu</th>
+      <th colspan=2 align="center">Generated Tokens/sec</th>
+      <th colspan=2 align="center">Secs/grad step</th>
     </tr>
     <tr>
-      <th style="text-align:center;">Standard</th>
-      <th style="text-align:center;">Compiled</th>
-      <th style="text-align:center;">Standard</th>
-      <th style="text-align:center;">Compiled</th>
+      <th align="center">Standard</th>
+      <th align="center">Compiled</th>
+      <th align="center">Standard</th>
+      <th align="center">Compiled</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td style="text-align:center;">1.5B</td>
-      <td style="text-align:center;">LoRA</td>
-      <td style="text-align:center;">~14.9 GB</td>
-      <td style="text-align:center;">18.9</td>
-      <td style="text-align:center;">28.4</td>
-      <td style="text-align:center;">58.5</td>
-      <td style="text-align:center;">49.7</td>
+      <td align="center">1.5B</td>
+      <td align="center">LoRA</td>
+      <td align="center">~14.9 GB</td>
+      <td align="center">18.9</td>
+      <td align="center">28.4</td>
+      <td align="center">58.5</td>
+      <td align="center">49.7</td>
     </tr>
     <tr>
-      <td style="text-align:center;">3B</td>
-      <td style="text-align:center;">LoRA</td>
-      <td style="text-align:center;">~17.2 GB</td>
-      <td style="text-align:center;">14.2</td>
-      <td style="text-align:center;">21.3</td>
-      <td style="text-align:center;">50.6</td>
-      <td style="text-align:center;">48.8</td>
+      <td align="center">3B</td>
+      <td align="center">LoRA</td>
+      <td align="center">~17.2 GB</td>
+      <td align="center">14.2</td>
+      <td align="center">21.3</td>
+      <td align="center">50.6</td>
+      <td align="center">48.8</td>
     </tr>
     <tr>
-      <td style="text-align:center;">7B</td>
-      <td style="text-align:center;">LoRA</td>
-      <td style="text-align:center;">~32.6 GB</td>
-      <td style="text-align:center;">15.1</td>
-      <td style="text-align:center;">20.5</td>
-      <td style="text-align:center;">64.8</td>
-      <td style="text-align:center;">68.0</td>
+      <td align="center">7B</td>
+      <td align="center">LoRA</td>
+      <td align="center">~32.6 GB</td>
+      <td align="center">15.1</td>
+      <td align="center">20.5</td>
+      <td align="center">64.8</td>
+      <td align="center">68.0</td>
     </tr>
     <tr>
-      <td style="text-align:center;">1.5B</td>
-      <td style="text-align:center;">QLoRA</td>
-      <td style="text-align:center;">~12.3 GB</td>
-      <td style="text-align:center;">7.9</td>
-      <td style="text-align:center;">16.0</td>
-      <td style="text-align:center;">142.7</td>
-      <td style="text-align:center;">71.5</td>
+      <td align="center">1.5B</td>
+      <td align="center">QLoRA</td>
+      <td align="center">~12.3 GB</td>
+      <td align="center">7.9</td>
+      <td align="center">16.0</td>
+      <td align="center">142.7</td>
+      <td align="center">71.5</td>
     </tr>
     <tr>
-      <td style="text-align:center;">3B</td>
-      <td style="text-align:center;">QLoRA</td>
-      <td style="text-align:center;">~11.5 GB</td>
-      <td style="text-align:center;">4.7</td>
-      <td style="text-align:center;">17.7</td>
-      <td style="text-align:center;">150.8</td>
-      <td style="text-align:center;">87.6</td>
+      <td align="center">3B</td>
+      <td align="center">QLoRA</td>
+      <td align="center">~11.5 GB</td>
+      <td align="center">4.7</td>
+      <td align="center">17.7</td>
+      <td align="center">150.8</td>
+      <td align="center">87.6</td>
     </tr>
     <tr>
-      <td style="text-align:center;">7B</td>
-      <td style="text-align:center;">QLoRA</td>
-      <td style="text-align:center;">~19.1 GB</td>
-      <td style="text-align:center;">2.6</td>
-      <td style="text-align:center;">11.1</td>
-      <td style="text-align:center;">410.0</td>
-      <td style="text-align:center;">135.3</td>
+      <td align="center">7B</td>
+      <td align="center">QLoRA</td>
+      <td align="center">~19.1 GB</td>
+      <td align="center">2.6</td>
+      <td align="center">11.1</td>
+      <td align="center">410.0</td>
+      <td align="center">135.3</td>
     </tr>
     <tr>
-      <td style="text-align:center;">14B</td>
-      <td style="text-align:center;">QLoRA</td>
-      <td style="text-align:center;">~29.6 GB</td>
-      <td style="text-align:center;">1.3</td>
-      <td style="text-align:center;">6.6</td>
-      <td style="text-align:center;">793.4</td>
-      <td style="text-align:center;">189.7</td>
+      <td align="center">14B</td>
+      <td align="center">QLoRA</td>
+      <td align="center">~29.6 GB</td>
+      <td align="center">1.3</td>
+      <td align="center">6.6</td>
+      <td align="center">793.4</td>
+      <td align="center">189.7</td>
     </tr>
     <tr>
-      <td style="text-align:center;">32B</td>
-      <td style="text-align:center;">QLoRA</td>
-      <td style="text-align:center;">~45.5 GB</td>
-      <td style="text-align:center;">0.6</td>
-      <td style="text-align:center;">3.6</td>
-      <td style="text-align:center;">1578.8</td>
-      <td style="text-align:center;">312.6</td>
+      <td align="center">32B</td>
+      <td align="center">QLoRA</td>
+      <td align="center">~45.5 GB</td>
+      <td align="center">0.6</td>
+      <td align="center">3.6</td>
+      <td align="center">1578.8</td>
+      <td align="center">312.6</td>
     </tr>
   </tbody>
 </table>
@@ -176,91 +176,91 @@ The learning rate for LoRA-based methods was set 20 times higher than that used 
 <table>
   <thead>
     <tr>
-      <th rowspan=2 style="text-align:center;">Qwen2.5 Model</th>
-      <th rowspan=2 style="text-align:center;">Setting</th>
-      <th rowspan=2 style="text-align:center;">Peak Memory/gpu</th>
-      <th colspan=2 style="text-align:center;">Generated Tokens/sec</th>
-      <th colspan=2 style="text-align:center;">Secs/grad step</th>
+      <th rowspan=2 align="center">Qwen2.5 Model</th>
+      <th rowspan=2 align="center">Setting</th>
+      <th rowspan=2 align="center">Peak Memory/gpu</th>
+      <th colspan=2 align="center">Generated Tokens/sec</th>
+      <th colspan=2 align="center">Secs/grad step</th>
     </tr>
     <tr>
-      <th style="text-align:center;">Standard</th>
-      <th style="text-align:center;">Compiled</th>
-      <th style="text-align:center;">Standard</th>
-      <th style="text-align:center;">Compiled</th>
+      <th align="center">Standard</th>
+      <th align="center">Compiled</th>
+      <th align="center">Standard</th>
+      <th align="center">Compiled</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td style="text-align:center;">1.5B</td>
-      <td style="text-align:center;">DoRA</td>
-      <td style="text-align:center;">~14.9 GB</td>
-      <td style="text-align:center;">9.1</td>
-      <td style="text-align:center;">16.0</td>
-      <td style="text-align:center;">190.0</td>
-      <td style="text-align:center;">117.7</td>
+      <td align="center">1.5B</td>
+      <td align="center">DoRA</td>
+      <td align="center">~14.9 GB</td>
+      <td align="center">9.1</td>
+      <td align="center">16.0</td>
+      <td align="center">190.0</td>
+      <td align="center">117.7</td>
     </tr>
     <tr>
-      <td style="text-align:center;">3B</td>
-      <td style="text-align:center;">DoRA</td>
-      <td style="text-align:center;">~17.2 GB</td>
-      <td style="text-align:center;">6.1</td>
-      <td style="text-align:center;">10.7</td>
-      <td style="text-align:center;">101.3</td>
-      <td style="text-align:center;">118.8</td>
+      <td align="center">3B</td>
+      <td align="center">DoRA</td>
+      <td align="center">~17.2 GB</td>
+      <td align="center">6.1</td>
+      <td align="center">10.7</td>
+      <td align="center">101.3</td>
+      <td align="center">118.8</td>
     </tr>
     <tr>
-      <td style="text-align:center;">7B</td>
-      <td style="text-align:center;">DoRA</td>
-      <td style="text-align:center;">~32.5 GB</td>
-      <td style="text-align:center;">3.5</td>
-      <td style="text-align:center;">5.9</td>
-      <td style="text-align:center;">328.1</td>
-      <td style="text-align:center;">233.0</td>
+      <td align="center">7B</td>
+      <td align="center">DoRA</td>
+      <td align="center">~32.5 GB</td>
+      <td align="center">3.5</td>
+      <td align="center">5.9</td>
+      <td align="center">328.1</td>
+      <td align="center">233.0</td>
     </tr>
     <tr>
-      <td style="text-align:center;">1.5B</td>
-      <td style="text-align:center;">QDoRA</td>
-      <td style="text-align:center;">~12.3 GB</td>
-      <td style="text-align:center;">4.0</td>
-      <td style="text-align:center;">9.0</td>
-      <td style="text-align:center;">486.5</td>
-      <td style="text-align:center;">191.5</td>
+      <td align="center">1.5B</td>
+      <td align="center">QDoRA</td>
+      <td align="center">~12.3 GB</td>
+      <td align="center">4.0</td>
+      <td align="center">9.0</td>
+      <td align="center">486.5</td>
+      <td align="center">191.5</td>
     </tr>
     <tr>
-      <td style="text-align:center;">3B</td>
-      <td style="text-align:center;">QDoRA</td>
-      <td style="text-align:center;">~11.5 GB</td>
-      <td style="text-align:center;">2.2</td>
-      <td style="text-align:center;">6.0</td>
-      <td style="text-align:center;">581.0</td>
-      <td style="text-align:center;">219.8</td>
+      <td align="center">3B</td>
+      <td align="center">QDoRA</td>
+      <td align="center">~11.5 GB</td>
+      <td align="center">2.2</td>
+      <td align="center">6.0</td>
+      <td align="center">581.0</td>
+      <td align="center">219.8</td>
     </tr>
     <tr>
-      <td style="text-align:center;">7B</td>
-      <td style="text-align:center;">QDoRA</td>
-      <td style="text-align:center;">~19.1 GB</td>
-      <td style="text-align:center;">1.1</td>
-      <td style="text-align:center;">3.2</td>
-      <td style="text-align:center;">1515.3</td>
-      <td style="text-align:center;">488.3</td>
+      <td align="center">7B</td>
+      <td align="center">QDoRA</td>
+      <td align="center">~19.1 GB</td>
+      <td align="center">1.1</td>
+      <td align="center">3.2</td>
+      <td align="center">1515.3</td>
+      <td align="center">488.3</td>
     </tr>
     <tr>
-      <td style="text-align:center;">14B</td>
-      <td style="text-align:center;">QDoRA</td>
-      <td style="text-align:center;">~29.6 GB</td>
-      <td style="text-align:center;">0.6</td>
-      <td style="text-align:center;">1.8</td>
-      <td style="text-align:center;">2907.8</td>
-      <td style="text-align:center;">911.6</td>
+      <td align="center">14B</td>
+      <td align="center">QDoRA</td>
+      <td align="center">~29.6 GB</td>
+      <td align="center">0.6</td>
+      <td align="center">1.8</td>
+      <td align="center">2907.8</td>
+      <td align="center">911.6</td>
     </tr>
     <tr>
-      <td style="text-align:center;">32B</td>
-      <td style="text-align:center;">QDoRA</td>
-      <td style="text-align:center;">~45.5 GB</td>
-      <td style="text-align:center;">0.2</td>
-      <td style="text-align:center;">0.8</td>
-      <td style="text-align:center;">4409.3</td>
-      <td style="text-align:center;">1478.6</td>
+      <td align="center">32B</td>
+      <td align="center">QDoRA</td>
+      <td align="center">~45.5 GB</td>
+      <td align="center">0.2</td>
+      <td align="center">0.8</td>
+      <td align="center">4409.3</td>
+      <td align="center">1478.6</td>
     </tr>
   </tbody>
 </table>
@@ -272,69 +272,69 @@ DoRA w/ Cache significantly speeds up the generation process by caching intermed
 <table>
   <thead>
     <tr>
-      <th rowspan=2 style="text-align:center;">Qwen2.5 Model</th>
-      <th rowspan=2 style="text-align:center;">Setting</th>
-      <th rowspan=2 style="text-align:center;">Peak Memory/gpu</th>
-      <th colspan=2 style="text-align:center;">Generated Tokens/sec</th>
-      <th colspan=2 style="text-align:center;">Secs/grad step</th>
+      <th rowspan=2 align="center">Qwen2.5 Model</th>
+      <th rowspan=2 align="center">Setting</th>
+      <th rowspan=2 align="center">Peak Memory/gpu</th>
+      <th colspan=2 align="center">Generated Tokens/sec</th>
+      <th colspan=2 align="center">Secs/grad step</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td style="text-align:center;">1.5B</td>
-      <td style="text-align:center;">DoRA w/ Cache</td>
-      <td style="text-align:center;">~14.9 GB</td>
-      <td colspan=2 style="text-align:center;">16.5</td>
-      <td colspan=2 style="text-align:center;">93.2</td>
+      <td align="center">1.5B</td>
+      <td align="center">DoRA w/ Cache</td>
+      <td align="center">~14.9 GB</td>
+      <td align="center">16.5</td>
+      <td align="center">93.2</td>
     </tr>
     <tr>
-      <td style="text-align:center;">3B</td>
-      <td style="text-align:center;">DoRA w/ Cache</td>
-      <td style="text-align:center;">~17.3 GB</td>
-      <td colspan=2 style="text-align:center;">12.5</td>
-      <td colspan=2 style="text-align:center;">79.1</td>
+      <td align="center">3B</td>
+      <td align="center">DoRA w/ Cache</td>
+      <td align="center">~17.3 GB</td>
+      <td align="center">12.5</td>
+      <td align="center">79.1</td>
     </tr>
     <tr>
-      <td style="text-align:center;">7B</td>
-      <td style="text-align:center;">DoRA w/ Cache</td>
-      <td style="text-align:center;">~32.6 GB</td>
-      <td colspan=2 style="text-align:center;">13.1</td>
-      <td colspan=2 style="text-align:center;">101.2</td>
+      <td align="center">7B</td>
+      <td align="center">DoRA w/ Cache</td>
+      <td align="center">~32.6 GB</td>
+      <td align="center">13.1</td>
+      <td align="center">101.2</td>
     </tr>
     <tr>
-      <td style="text-align:center;">1.5B</td>
-      <td style="text-align:center;">QDoRA w/ Cache</td>
-      <td style="text-align:center;">~12.3 GB</td>
-      <td colspan=2 style="text-align:center;">7.2</td>
-      <td colspan=2 style="text-align:center;">147.9</td>
+      <td align="center">1.5B</td>
+      <td align="center">QDoRA w/ Cache</td>
+      <td align="center">~12.3 GB</td>
+      <td align="center">7.2</td>
+      <td align="center">147.9</td>
     </tr>
     <tr>
-      <td style="text-align:center;">3B</td>
-      <td style="text-align:center;">QDoRA w/ Cache</td>
-      <td style="text-align:center;">~11.5 GB</td>
-      <td colspan=2 style="text-align:center;">3.3</td>
-      <td colspan=2 style="text-align:center;">127.3</td>
+      <td align="center">3B</td>
+      <td align="center">QDoRA w/ Cache</td>
+      <td align="center">~11.5 GB</td>
+      <td align="center">3.3</td>
+      <td align="center">127.3</td>
     </tr>
     <tr>
-      <td style="text-align:center;">7B</td>
-      <td style="text-align:center;">QDoRA w/ Cache</td>
-      <td style="text-align:center;">~19.1 GB</td>
-      <td colspan=2 style="text-align:center;">2.3</td>
-      <td colspan=2 style="text-align:center;">351.4</td>
+      <td align="center">7B</td>
+      <td align="center">QDoRA w/ Cache</td>
+      <td align="center">~19.1 GB</td>
+      <td align="center">2.3</td>
+      <td align="center">351.4</td>
     </tr>
     <tr>
-      <td style="text-align:center;">14B</td>
-      <td style="text-align:center;">QDoRA w/ Cache</td>
-      <td style="text-align:center;">~29.6 GB</td>
-      <td colspan=2 style="text-align:center;">1.3</td>
-      <td colspan=2 style="text-align:center;">810.8</td>
+      <td align="center">14B</td>
+      <td align="center">QDoRA w/ Cache</td>
+      <td align="center">~29.6 GB</td>
+      <td align="center">1.3</td>
+      <td align="center">810.8</td>
     </tr>
     <tr>
-      <td style="text-align:center;">32B</td>
-      <td style="text-align:center;">QDoRA w/ Cache</td>
-      <td style="text-align:center;">~45.5 GB</td>
-      <td colspan=2 style="text-align:center;">0.6</td>
-      <td colspan=2 style="text-align:center;">1812.3</td>
+      <td align="center">32B</td>
+      <td align="center">QDoRA w/ Cache</td>
+      <td align="center">~45.5 GB</td>
+      <td align="center">0.6</td>
+      <td align="center">1812.3</td>
     </tr>
   </tbody>
 </table>
