@@ -39,8 +39,8 @@ Unless specified otherwise, our experimental settings are as follows:
 
 ### Example Training Dynamics
 
-We show the reward and response length dynamics during GRPO training of Qwen2.5-3B with different methods.
-From the results, we can see that LoRA-based methods achieve comparable performance with full-parameter GRPO training.
+We show the reward and response length dynamics during GRPO training of Qwen2.5-3B with different methods on GSM8K.
+From the results, we can see that LoRA-based methods (with rank 1), even with base model quantization, achieve comparable performance with full-parameter GRPO training.
 
 <p align="center">
   <img src="assets/reward.png" alt="reward" width="500">
