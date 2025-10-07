@@ -9,8 +9,8 @@ Tora integrates PEFT methods—such as (Q)LoRA and (Q)DoRA—into the RL workflo
 This provides an efficient and memory-friendly framework that enables researchers to reduce the computational resources required for fine-tuning large language models via RL.
 
 **Awesome List: LoRA for RL**
-* *October 2025*: LoRA Without Regret by Thinking Machines. [blog link](https://thinkingmachines.ai/blog/lora/)
-* *May 2025*: Tina: Tiny Reasoning Models via LoRA. [paper link](https://github.com/shangshang-wang/Tina)
+* *October 2025*: LoRA Without Regret by Thinking Machines. [link](https://thinkingmachines.ai/blog/lora/)
+* *May 2025*: Tina: Tiny Reasoning Models via LoRA. [link](https://github.com/shangshang-wang/Tina)
 
 ## Overview
 
@@ -24,18 +24,37 @@ This allows for efficient training and generation, especially in memory-constrai
 |           | (Q)DoRA               |          ✅          |               ✅                |
 |           | (Q)DoRA w/ Cache      |          ❌          |               ✅                |
 
-The standard DoRA layer in [torchtune](https://github.com/meta-pytorch/torchtune) recalculates the weight norm and magnitude scale on every forward pass. This is inefficient for GRPO's completion generation step, as these values remain static between weight updates.
+The standard DoRA layer in torchtune ([link](https://github.com/meta-pytorch/torchtune/blob/main/torchtune/modules/peft/dora.py)) recalculates the weight norm and magnitude scale on every forward pass. This is inefficient for GRPO's completion generation step, as these values remain static between weight updates.
 DoRA w/ Cache optimizes this by caching these expensive computations. It computes the values once and reuses them on subsequent forward passes, avoiding redundant calculations and significantly improving performance. However, the current caching implementation is not compatible with torch.compile.
 
 ## Memory and Efficiency Benchmarking
 
-Unless otherwise specified in the table, the GRPO settings are as follows:
-All experiments were conducted on two NVIDIA RTX A40 GPUs with a per-GPU batch size of 2 and a GRPO generation sequence length of 512 on GSM8K training dataset.
-The models used were Qwen2.5 base models in various sizes: 1.5B, 3B, 7B, 14B, and 32B parameters.
-For all LoRA-based methods, LoRA was applied to all layers with a rank of 1, an alpha of 2, and zero dropout.
-The 'Q' prefix in QLoRA and QDoRA means that the base model was quantized to 4-bits.
-During training, activation checkpointing was enabled for all experiments, and we utilized Fully Sharded Data Parallelism (FSDP).
-The learning rate for LoRA-based methods was set 20 times higher than that used for full-parameter GRPO training.
+Unless specified otherwise, our experimental settings are as follows:
+* All experiments were conducted on two NVIDIA RTX A40 GPUs using the GSM8K training dataset.
+* We used a per-GPU batch size of 2 and a generation sequence length of 512.
+* We utilized Qwen2.5 base models in five sizes: 1.5B, 3B, 7B, 14B, and 32B parameters.
+* For all LoRA-based methods, LoRA was applied to all layers with a rank of 1, an alpha of 2, and zero dropout.
+* The `Q` prefix in QLoRA and QDoRA signifies that the base model was quantized to 4-bits.
+* We enabled activation checkpointing and used Fully Sharded Data Parallelism (FSDP) across all experiments.
+* The learning rate for LoRA-based methods was set to 20x that of full-parameter GRPO training.
+
+### Example Training Dynamics
+
+We show the reward and response length dynamics during GRPO training of Qwen2.5-3B with different methods.
+From the results, we can see that LoRA-based methods achieve comparable performance with full-parameter GRPO training.
+
+<div style="text-align: center;">
+  <img 
+    src="assets/reward.png"
+    alt="reward" 
+    width="250" 
+    style="max-width: 100%; height: auto;">
+  <img 
+    src="assets/response-length.png"
+    alt="reward" 
+    width="250" 
+    style="max-width: 100%; height: auto;"> 
+    </div>
 
 ### Full-Parameter GRPO
 
