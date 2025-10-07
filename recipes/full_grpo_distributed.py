@@ -133,8 +133,21 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
             self._metric_logger = config.instantiate(cfg.metric_logger)
             self._metric_logger.log_config(cfg)
 
-        # Setup model to train
-        checkpoint_dict = self.load_checkpoint(cfg_checkpointer=cfg.checkpointer)
+        # Handle the MAIN checkpointer. It's stored in `self` to be used for saving later.
+        self._checkpointer = config.instantiate(
+            cfg.checkpointer,
+            resume_from_checkpoint=self._resume_from_checkpoint,
+        )
+        checkpoint_dict = self._checkpointer.load_checkpoint()
+
+        # Handle the REFERENCE checkpointer. It's instantiated locally just to load weights.
+        # This prevents it from overwriting self._checkpointer.
+        ref_checkpointer_instance = config.instantiate(
+            cfg.ref_checkpointer,
+            resume_from_checkpoint=self._resume_from_checkpoint,  # Should be False for ref model
+        )
+        ref_checkpoint_dict = ref_checkpointer_instance.load_checkpoint()
+
         if self._resume_from_checkpoint:
             self._update_recipe_state(checkpoint_dict)
         self._model = self._setup_model(
@@ -146,9 +159,6 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
             reshard_after_forward=False,
         )
         # Setup reference model
-        ref_checkpoint_dict = self.load_checkpoint(
-            cfg_checkpointer=cfg.ref_checkpointer
-        )
         self._ref_model = self._setup_model(
             cfg_model=cfg.model,
             enable_activation_checkpointing=self._enable_activation_checkpointing,
