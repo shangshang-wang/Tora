@@ -332,6 +332,18 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
         self._ppo_epochs = cfg.ppo_epochs
         self._save_every_n_epochs = cfg.save_every_n_epochs
 
+        # Parse reward function names from the config for named logging
+        self.reward_names = []
+        if "reward_functions" in cfg and isinstance(cfg.reward_functions, (ListConfig, list)):
+            for rf_cfg in cfg.reward_functions:
+                # Extracts the class name, e.g., "FormattedMathCorrectnessReward"
+                component_path = rf_cfg.get("_component_", "")
+                if component_path:
+                    class_name = component_path.split('.')[-1]
+                    self.reward_names.append(class_name)
+
+            utils.log_rank_zero(log, f"Found reward names for logging: {self.reward_names}")
+
         if cfg.get("stop_token_ids", False):
             stop_token_ids = cfg.stop_token_ids
             if self._tokenizer.eos_id not in stop_token_ids:
@@ -815,14 +827,18 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
         rewards = rewards.to(self._device)  # [B, G]
         successes = successes.to(self._device)  # [B, G]
 
+        # TODO Create equal weights for all reward functions
+        reward_components = rewards.clone()
+
         # Create equal weights for all reward functions
         num_reward_funcs = rewards.shape[-1]
         reward_weights = torch.ones(num_reward_funcs, device=self._device) / num_reward_funcs
-        rewards = (rewards * reward_weights).sum(dim=-1)  # [B, G]
+        aggregated_rewards = (rewards * reward_weights).sum(dim=-1)  # [B, G]
         successes = successes.mean(dim=-1)  # [B, G]
 
-        advantages = (rewards - rewards.mean(1, keepdim=True)) / (
-                rewards.std(1, keepdim=True) + 1e-4
+        # Use the aggregated reward for advantage calculation
+        advantages = (aggregated_rewards - aggregated_rewards.mean(1, keepdim=True)) / (
+            aggregated_rewards.std(1, keepdim=True) + 1e-4
         )
         advantages = advantages.reshape(batch_size * grpo_size)  # flatten
 
@@ -838,6 +854,7 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
             logprobs=logprobs,
             ref_logprobs=ref_logprobs,
             rewards=rewards.reshape(batch_size * grpo_size),
+            reward_components=reward_components.reshape(batch_size * grpo_size, -1),
             successes=successes.reshape(batch_size * grpo_size),
             advantages=advantages,
             masks=masks,
@@ -1065,6 +1082,9 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
         successes = trajectory.successes.mean()
         torch.distributed.reduce(successes, dst=0, op=torch.distributed.ReduceOp.AVG)
 
+        mean_reward_components = trajectory.reward_components.mean(dim=0)
+        torch.distributed.reduce(mean_reward_components, dst=0, op=torch.distributed.ReduceOp.AVG)
+
         log_dict = {
             "rewards": rewards,
             "successes": successes,
@@ -1083,7 +1103,16 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
             log_dict.update(training.get_memory_stats(device=self._device))
 
         if self._is_rank_zero:
-            self._metric_logger.log_dict(log_dict, step=self.global_step)
+            if self._is_rank_zero:
+                if self.reward_names and len(self.reward_names) == len(mean_reward_components):
+                    for name, reward_comp in zip(self.reward_names, mean_reward_components):
+                        # Using a "reward/" prefix groups these together in the wandb UI
+                        log_dict[f"reward/{name}"] = reward_comp.item()
+                else:
+                    for i, reward_comp in enumerate(mean_reward_components):
+                        log_dict[f"reward/component_{i}"] = reward_comp.item()
+
+                self._metric_logger.log_dict(log_dict, step=self.global_step)
 
     def cleanup(self) -> None:
         if self._is_rank_zero:

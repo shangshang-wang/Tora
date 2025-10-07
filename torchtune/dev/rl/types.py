@@ -18,6 +18,9 @@ class GRPOTrajectory(NamedTuple):
         query_responses (torch.Tensor): (query, response) pairs with shape [B x G, P+L].
         logprobs (torch.Tensor): Log probabilities of the generated responses with shape [B x G, L].
         ref_logprobs (torch.Tensor): Log probabilities of the generated responses using the reference policy with shape [B x G, L].
+        rewards (torch.Tensor): Scalar reward values for the generated responses with shape [B x G].
+        reward_components (torch.Tensor): Decomposed reward values for the generated responses with shape [B x G, C].
+        successes (torch.Tensor): Binary success indicators for the generated responses with
         advantages (torch.Tensor): Advantage estimates for the generated responses with shape [B x G].
         masks (torch.Tensor): Attention masks for input ids-generated responses pairs with shape [B x G, P+L, P+L].
         position_ids (torch.Tensor): Position IDs for input ids-generated responses pairs with shape [B x G, P+L].
@@ -30,6 +33,7 @@ class GRPOTrajectory(NamedTuple):
     logprobs: torch.Tensor = None  # [B*G, L]
     ref_logprobs: torch.Tensor = None  # [B*G, L]
     rewards: torch.Tensor = None  # [B*G]
+    reward_components: torch.Tensor = None  # [B*G, C]
     successes: torch.Tensor = None  # [B*G]
     advantages: torch.Tensor = None  # [B*G]
     masks: torch.Tensor = None  # [B*G, P+L, P+L]
