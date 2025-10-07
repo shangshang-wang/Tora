@@ -236,8 +236,19 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
         utils.log_rank_zero(self._logger, "metric logger is initialized.")
 
         # Load checkpoints
-        checkpoint_dict = self.load_checkpoint(cfg_checkpointer=cfg.checkpointer)
-        ref_checkpoint_dict = self.load_checkpoint(cfg_checkpointer=cfg.ref_checkpointer)
+        self._checkpointer = config.instantiate(
+            cfg.checkpointer,
+            resume_from_checkpoint=self._resume_from_checkpoint,
+        )
+        checkpoint_dict = self._checkpointer.load_checkpoint()
+
+        # Instantiate the REFERENCE checkpointer locally just to load the weights.
+        # It will not be stored in `self` and will not overwrite the main checkpointer.
+        ref_checkpointer_instance = config.instantiate(
+            cfg.ref_checkpointer,
+            resume_from_checkpoint=self._resume_from_checkpoint, # Should be False for ref model
+        )
+        ref_checkpoint_dict = ref_checkpointer_instance.load_checkpoint()
 
         if self._resume_from_checkpoint:
             self._update_recipe_state(checkpoint_dict)
@@ -633,6 +644,21 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
             log,
             f"Getting full model state dict took {time.perf_counter() - start:.2f} secs",
         )
+
+        if self._is_rank_zero:
+            cleaned_state_dict = {}
+            adapter_state_dict = {}
+
+            for key, value in cpu_state_dict.items():
+                # Clean the key by removing the activation checkpointing prefix
+                cleaned_key = key.replace("._checkpoint_wrapped_module", "")
+
+                if "lora_" in cleaned_key:
+                    adapter_state_dict[cleaned_key] = value
+                else:
+                    cleaned_state_dict[cleaned_key] = value
+
+            cpu_state_dict = cleaned_state_dict
 
         if intermediate_checkpoint:
             start = time.perf_counter()
