@@ -272,11 +272,11 @@ DoRA w/ Cache significantly speeds up the generation process by caching intermed
 <table>
   <thead>
     <tr>
-      <th rowspan=2 align="center">Qwen2.5 Model</th>
-      <th rowspan=2 align="center">Setting</th>
-      <th rowspan=2 align="center">Peak Memory/gpu</th>
-      <th colspan=2 align="center">Generated Tokens/sec</th>
-      <th colspan=2 align="center">Secs/grad step</th>
+      <th align="center">Qwen2.5 Model</th>
+      <th align="center">Setting</th>
+      <th align="center">Peak Memory/gpu</th>
+      <th align="center">Generated Tokens/sec</th>
+      <th align="center">Secs/grad step</th>
     </tr>
   </thead>
   <tbody>
