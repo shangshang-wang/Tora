@@ -28,8 +28,6 @@ _ALL_RECIPES = [
         configs=[
             Config(name="qwen2_5/1.5B_full_grpo", file_path="qwen2_5/1.5B_full_grpo.yaml"),
             Config(name="qwen2_5/3B_full_grpo", file_path="qwen2_5/3B_full_grpo.yaml"),
-            Config(name="qwen2_5/7B_full_grpo", file_path="qwen2_5/7B_full_grpo.yaml"),
-            Config(name="qwen2_5/14B_full_grpo", file_path="qwen2_5/14B_full_grpo.yaml"),
         ],
         supports_distributed=True,
     ),
