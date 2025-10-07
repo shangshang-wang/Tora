@@ -14,8 +14,7 @@ This provides an efficient and memory-friendly framework that enables researcher
 
 ## Overview
 
-Tora integrates state-of-the-art Parameter-Efficient Fine-Tuning (PEFT) techniques, such as (Q)LoRA and (Q)DoRA, into the RL workflow.
-This allows for efficient training and generation, especially in memory-constrained environments.
+The following table summarizes the key features of different RL methods and LoRA-based techniques supported in Tora now.
 
 | RL Method | Type of Weight Update | Torch Model Compile | Multiple Devices with One Node |
 |-----------|-----------------------|:-------------------:|:------------------------------:|
