@@ -847,7 +847,7 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
             query_responses=query_responses,
             logprobs=logprobs,
             ref_logprobs=ref_logprobs,
-            rewards=rewards.reshape(batch_size * grpo_size),
+            rewards=aggregated_rewards.reshape(batch_size * grpo_size),
             reward_components=reward_components.reshape(batch_size * grpo_size, -1),
             successes=successes.reshape(batch_size * grpo_size),
             advantages=advantages,
