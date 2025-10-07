@@ -1,6 +1,6 @@
 # Tora: Torchtune-LoRA for RL
 
-[**Overview**](#overview) | [**Benchmarking**](#memory-and-efficiency-benchmarking) | [**Get Started**](#get-started) |  [**Behind the Name**](#behind-the-name) |
+[**Overview**](#overview) | [**Training Dynamics**](#training-dynamics) | [**Benchmarking**](#memory-and-efficiency-benchmarking) | [**Get Started**](#get-started) |  [**Behind the Name**](#behind-the-name) |
 
 Tora is a project built on [torchtune](https://github.com/meta-pytorch/torchtune) that specializes in LoRA-based RL methods for post-training.
 
@@ -26,7 +26,7 @@ The following table summarizes the key features of different RL methods and LoRA
 The standard DoRA layer in torchtune ([link](https://github.com/meta-pytorch/torchtune/blob/main/torchtune/modules/peft/dora.py)) recalculates the weight norm and magnitude scale on every forward pass. This is inefficient for GRPO's completion generation step, as these values remain static between weight updates.
 DoRA w/ Cache optimizes this by caching these expensive computations. It computes the values once and reuses them on subsequent forward passes, avoiding redundant calculations and significantly improving performance. However, the current caching implementation is not compatible with torch.compile.
 
-## Memory and Efficiency Benchmarking
+## LoRA vs Full-Parameter Comparison
 
 Unless specified otherwise, our experimental settings are as follows:
 * All experiments were conducted on two NVIDIA RTX A40 GPUs using the GSM8K training dataset.
@@ -37,7 +37,7 @@ Unless specified otherwise, our experimental settings are as follows:
 * We enabled activation checkpointing and used Fully Sharded Data Parallelism (FSDP) across all experiments.
 * The learning rate for LoRA-based methods was set to 20x that of full-parameter GRPO training.
 
-### Example Training Dynamics
+### Training Dynamics
 
 We show the reward and response length dynamics during GRPO training of Qwen2.5-3B with different methods on GSM8K.
 From the results, we can see that LoRA-based methods (with rank 1), even with base model quantization, achieve comparable performance with full-parameter GRPO training.
@@ -47,7 +47,11 @@ From the results, we can see that LoRA-based methods (with rank 1), even with ba
   <img src="assets/response-length.png" alt="response length" width="500">
 </p>
 
-### Full-Parameter GRPO
+### Memory and Efficiency Benchmarking
+
+In the tables below, we benchmark the peak memory usage per GPU, the number of generated tokens per second during GRPO completion generation, and the seconds per gradient step for different GRPO methods.
+
+#### Full-Parameter GRPO
 
 <table>
   <thead>
@@ -87,7 +91,7 @@ From the results, we can see that LoRA-based methods (with rank 1), even with ba
   </tbody>
 </table>
 
-### (Q)LoRA-based GRPO
+#### (Q)LoRA-based GRPO
 
 <table>
   <thead>
@@ -181,7 +185,7 @@ From the results, we can see that LoRA-based methods (with rank 1), even with ba
   </tbody>
 </table>
 
-### (Q)DoRA-based GRPO
+#### (Q)DoRA-based GRPO
 
 <table>
   <thead>
@@ -275,7 +279,7 @@ From the results, we can see that LoRA-based methods (with rank 1), even with ba
   </tbody>
 </table>
 
-### (Q)DoRA-with-Cache-based GRPO
+#### (Q)DoRA-with-Cache-based GRPO
 
 DoRA w/ Cache significantly speeds up the generation process by caching intermediate calculations, and it has comparable performance with `torch.compile` optimizations.
 
