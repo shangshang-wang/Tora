@@ -8,6 +8,7 @@ from functools import partial
 from typing import Optional
 from torchtune.modules.common_utils import reparametrize_as_dtype_state_dict_post_hook
 
+import torch
 from torch import nn
 from torchtune.modules.transformer import TransformerDecoder
 from torchtune.models.qwen2._positional_embeddings import Qwen2RotaryPositionalEmbeddings
@@ -21,7 +22,7 @@ from torchtune.modules import (
 )
 
 
-from torchtune.modules.peft import DoRALinear, LORA_ATTN_MODULES, LoRALinear
+from torchtune.modules.peft import DoRALinear, DoRALinearCache, LORA_ATTN_MODULES, LoRALinear
 
 """
 Component builders for the Qwen2 model and popular variants such as LoRA.
@@ -177,7 +178,7 @@ def lora_qwen2(
     lora_rank: int,
     lora_alpha: float,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     # Quantization args
     quantize_base: bool = False,
 ) -> TransformerDecoder:
@@ -218,6 +219,7 @@ def lora_qwen2(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): LoRA dropout probability. Default: 0.0
+        lora_type (str): Which type of LoRA variant to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base: (bool): Whether to quantize base model weights or not. Only applied to base
             weights within linear layers LoRA is applied to. The final output linear projection is not
             supported for quantization currently.
@@ -228,7 +230,6 @@ def lora_qwen2(
 
     Raises:
         ValueError: if ``apply_lora_to_output`` and ``tie_word_embeddings``.
-
     """
     layers = nn.ModuleList()
     for _ in range(num_layers):
@@ -250,7 +251,7 @@ def lora_qwen2(
             lora_rank=lora_rank,
             lora_alpha=lora_alpha,
             lora_dropout=lora_dropout,
-            use_dora=use_dora,
+            lora_type=lora_type,
             quantize_base=quantize_base,
         )
 
@@ -261,7 +262,7 @@ def lora_qwen2(
                 lora_rank=lora_rank,
                 lora_alpha=lora_alpha,
                 quantize_base=quantize_base,
-                use_dora=use_dora,
+                lora_type=lora_type,
                 lora_dropout=lora_dropout,
             )
         else:
@@ -285,10 +286,22 @@ def lora_qwen2(
             )
         output_proj = TiedLinear(tok_embeddings)
     else:
-        # TODO: quantize_base is not applied to final output_proj currently.
-        adapter_cls = DoRALinear if use_dora else LoRALinear
+        if lora_type == "dora":
+            adapter_cls = DoRALinear
+        elif lora_type == "dora_cache":
+            adapter_cls = DoRALinearCache
+        else:
+            adapter_cls = LoRALinear
+
         output_proj = (
-            adapter_cls(embed_dim, vocab_size, rank=lora_rank, alpha=lora_alpha, dropout=lora_dropout)
+            adapter_cls(
+                embed_dim,
+                vocab_size,
+                rank=lora_rank,
+                alpha=lora_alpha,
+                dropout=lora_dropout,
+                quantize_base=quantize_base
+            )
             if apply_lora_to_output
             else nn.Linear(embed_dim, vocab_size, bias=False)
         )
@@ -305,12 +318,26 @@ def lora_qwen2(
     if quantize_base:
         # For QLoRA, we reparametrize 4-bit tensors to higher precision, and offload to CPU on the fly
         # so as to not increase peak memory
+        dtype = None
+
+        if hasattr(model, 'tok_embeddings') and model.tok_embeddings.weight.dtype != torch.uint8:
+            dtype = model.tok_embeddings.weight.dtype
+
+        if dtype is None:
+            for layer in model.layers:
+                if hasattr(layer, 'sa_norm'):
+                    dtype = layer.sa_norm.weight.dtype
+                    break
+
+        if dtype is None:
+            dtype = torch.bfloat16
+
+        print(f"QLoRA: Reparametrizing quantized tensors to {dtype} and offloading to CPU on the fly")
+
         model._register_state_dict_hook(
             partial(
                 reparametrize_as_dtype_state_dict_post_hook,
-                # TODO this is clowny, figure out a better way to get what precision the rest
-                # of the model is in
-                dtype=tok_embeddings.weight.dtype,
+                dtype=dtype,
                 offload_to_cpu=True,
             )
         )
@@ -339,7 +366,7 @@ def lora_qwen2_self_attention(
     lora_rank: int,
     lora_alpha: float,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> MultiHeadAttention:
     """
@@ -372,6 +399,7 @@ def lora_qwen2_self_attention(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): LoRA dropout probability. Default: 0.0
+        lora_type (str): Which type of LoRA variant to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base (bool): Whether to quantize base model parameters for linear layers
             LoRA is being applied to. Default is ``False``.
 
@@ -387,7 +415,14 @@ def lora_qwen2_self_attention(
 
     head_dim = head_dim or embed_dim // num_heads
     num_kv_heads = num_kv_heads if num_kv_heads else num_heads
-    adapter_cls = DoRALinear if use_dora else LoRALinear
+
+    if lora_type == "dora":
+        adapter_cls = DoRALinear
+    elif lora_type == "dora_cache":
+        adapter_cls = DoRALinearCache
+    else:
+        adapter_cls = LoRALinear
+
     q_proj = (
         adapter_cls(
             embed_dim,
@@ -466,10 +501,17 @@ def lora_qwen2_mlp(
     lora_rank: int,
     lora_alpha: float,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> FeedForward:
-    adapter_cls = DoRALinear if use_dora else LoRALinear
+
+    if lora_type == "dora":
+        adapter_cls = DoRALinear
+    elif lora_type == "dora_cache":
+        adapter_cls = DoRALinearCache
+    else:
+        adapter_cls = LoRALinear
+
     gate_proj = adapter_cls(
         in_dim=dim,
         out_dim=hidden_dim,

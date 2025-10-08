@@ -4,6 +4,7 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 from typing import Optional
+from functools import partial
 
 from torchtune.data._prompt_templates import _get_prompt_template, _TemplateType
 
@@ -398,7 +399,7 @@ def lora_qwen2_5_0_5b(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -417,6 +418,7 @@ def lora_qwen2_5_0_5b(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): dropout probability for the low-rank approximation. Default: 0.0
+        lora_type (str): Which type of LoRA variant to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base (bool): Whether to quantize base model weights
 
     Returns:
@@ -443,7 +445,7 @@ def lora_qwen2_5_0_5b(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
 
@@ -455,7 +457,7 @@ def lora_qwen2_5_1_5b_base(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -474,6 +476,7 @@ def lora_qwen2_5_1_5b_base(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): dropout probability for the low-rank approximation. Default: 0.0
+        lora_type (str): Which type of LoRA variant to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base (bool): Whether to quantize base model weights
 
     Returns:
@@ -504,7 +507,7 @@ def lora_qwen2_5_1_5b_base(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
 
@@ -516,7 +519,7 @@ def lora_qwen2_5_1_5b_instruct(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -535,6 +538,7 @@ def lora_qwen2_5_1_5b_instruct(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): dropout probability for the low-rank approximation. Default: 0.0
+        lora_type (str): Which type of LoRA variant to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base (bool): Whether to quantize base model weights
 
     Returns:
@@ -565,7 +569,7 @@ def lora_qwen2_5_1_5b_instruct(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
 
@@ -577,7 +581,7 @@ def lora_qwen2_5_3b(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -596,6 +600,7 @@ def lora_qwen2_5_3b(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): dropout probability for the low-rank approximation. Default: 0.0
+        lora_type (str): Which type of LoRA variant to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base (bool): Whether to quantize base model weights
 
     Returns:
@@ -622,7 +627,7 @@ def lora_qwen2_5_3b(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
 
@@ -634,7 +639,7 @@ def lora_qwen2_5_7b_base(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -655,6 +660,7 @@ def lora_qwen2_5_7b_base(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): dropout probability for the low-rank approximation. Default: 0.0
+        lora_type (str): Which type of LoRA variant to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base (bool): Whether to quantize base model weights
 
     Returns:
@@ -681,7 +687,7 @@ def lora_qwen2_5_7b_base(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
 
@@ -693,7 +699,7 @@ def lora_qwen2_5_7b_instruct(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -714,6 +720,7 @@ def lora_qwen2_5_7b_instruct(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): dropout probability for the low-rank approximation. Default: 0.0
+        lora_type (str): Which type of LoRA variant to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base (bool): Whether to quantize base model weights
 
     Returns:
@@ -740,7 +747,7 @@ def lora_qwen2_5_7b_instruct(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
 
@@ -752,7 +759,7 @@ def lora_qwen2_5_14b_base(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -773,6 +780,7 @@ def lora_qwen2_5_14b_base(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): dropout probability for the low-rank approximation. Default: 0.0
+        lora_type (str): Which type of LoRA variant to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base (bool): Whether to quantize base model weights
 
     Returns:
@@ -799,7 +807,7 @@ def lora_qwen2_5_14b_base(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
 
@@ -811,7 +819,7 @@ def lora_qwen2_5_14b_instruct(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -832,6 +840,7 @@ def lora_qwen2_5_14b_instruct(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): dropout probability for the low-rank approximation. Default: 0.0
+        lora_type (str): Which type of LoRA variant to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base (bool): Whether to quantize base model weights
 
     Returns:
@@ -858,7 +867,7 @@ def lora_qwen2_5_14b_instruct(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
 
@@ -870,7 +879,7 @@ def lora_qwen2_5_32b_base(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -891,6 +900,7 @@ def lora_qwen2_5_32b_base(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): dropout probability for the low-rank approximation. Default: 0.0
+        lora_type (str): Which type of LoRA variant to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base (bool): Whether to quantize base model weights
 
     Returns:
@@ -917,7 +927,7 @@ def lora_qwen2_5_32b_base(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
 
@@ -929,7 +939,7 @@ def lora_qwen2_5_32b_instruct(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -950,6 +960,7 @@ def lora_qwen2_5_32b_instruct(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): dropout probability for the low-rank approximation. Default: 0.0
+        lora_type (str): Which type of LoRA variant to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base (bool): Whether to quantize base model weights
 
     Returns:
@@ -976,7 +987,7 @@ def lora_qwen2_5_32b_instruct(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
 
@@ -988,7 +999,7 @@ def lora_qwen2_5_72b_base(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -1009,6 +1020,7 @@ def lora_qwen2_5_72b_base(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): dropout probability for the low-rank approximation. Default: 0.0
+        lora_type (str): Which type of LoRA variant to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base (bool): Whether to quantize base model weights
 
     Returns:
@@ -1035,7 +1047,7 @@ def lora_qwen2_5_72b_base(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
 
@@ -1047,7 +1059,7 @@ def lora_qwen2_5_72b_instruct(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -1068,6 +1080,7 @@ def lora_qwen2_5_72b_instruct(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): dropout probability for the low-rank approximation. Default: 0.0
+        lora_type (str): Which type of LoRA variant to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base (bool): Whether to quantize base model weights
 
     Returns:
@@ -1094,6 +1107,38 @@ def lora_qwen2_5_72b_instruct(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
+
+
+qlora_qwen2_5_1_5b_base = partial(lora_qwen2_5_1_5b_base, quantize_base=True)
+qlora_qwen2_5_1_5b_base.__doc__ = """
+Builder for creating a Qwen2.5 1.5B base model with QLoRA enabled. Base model weights in linear layers
+that LoRA is applied to are quantized per the QLoRA paper: https://arxiv.org/abs/2305.14314.
+Please see `lora_qwen2_5_1_5b_base` for full API arguments.
+"""
+qlora_qwen2_5_3b = partial(lora_qwen2_5_3b, quantize_base=True)
+qlora_qwen2_5_3b.__doc__ = """
+Builder for creating a Qwen2.5 3B model with QLoRA enabled. Base model weights in linear layers
+that LoRA is applied to are quantized per the QLoRA paper: https://arxiv.org/abs/2305.14314.
+Please see `lora_qwen2_5_3b` for full API arguments.
+"""
+qlora_qwen2_5_7b_base = partial(lora_qwen2_5_7b_base, quantize_base=True)
+qlora_qwen2_5_7b_base.__doc__ = """
+Builder for creating a Qwen2.5 7B base model with QLoRA enabled. Base model weights in linear layers
+that LoRA is applied to are quantized per the QLoRA paper: https://arxiv.org/abs/2305.14314.
+Please see `lora_qwen2_5_7b_base` for full API arguments.
+"""
+qlora_qwen2_5_14b_base = partial(lora_qwen2_5_14b_base, quantize_base=True)
+qlora_qwen2_5_14b_base.__doc__ = """
+Builder for creating a Qwen2.5 14B base model with QLoRA enabled. Base model weights in linear layers
+that LoRA is applied to are quantized per the QLoRA paper: https://arxiv.org/abs/2305.14314.
+Please see `lora_qwen2_5_14b_base` for full API arguments.
+"""
+qlora_qwen2_5_32b_base = partial(lora_qwen2_5_32b_base, quantize_base=True)
+qlora_qwen2_5_32b_base.__doc__ = """
+Builder for creating a Qwen2.5 32B base model with QLoRA enabled. Base model weights in linear layers
+that LoRA is applied to are quantized per the QLoRA paper: https://arxiv.org/abs/2305.14314.
+Please see `lora_qwen2_5_32b_base` for full API arguments.
+"""

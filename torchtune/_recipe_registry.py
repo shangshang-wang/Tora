@@ -23,11 +23,27 @@ class Recipe:
 
 _ALL_RECIPES = [
     Recipe(
-        name="dev/grpo_full_finetune_distributed",
-        file_path="dev/grpo_full_finetune_distributed.py",
+        name="full_grpo_distributed",
+        file_path="full_grpo_distributed.py",
         configs=[
-            Config(name="dev/3B_full_grpo", file_path="dev/3B_full_grpo.yaml"),
-            Config(name="dev/qwen3B_sync_grpo", file_path="dev/qwen3B_sync_grpo.yaml"),
+            Config(name="qwen2_5/1.5B_full_grpo", file_path="qwen2_5/1.5B_full_grpo.yaml"),
+            Config(name="qwen2_5/3B_full_grpo", file_path="qwen2_5/3B_full_grpo.yaml"),
+        ],
+        supports_distributed=True,
+    ),
+    Recipe(
+        name="lora_grpo_distributed",
+        file_path="lora_grpo_distributed.py",
+        configs=[
+            Config(name="qwen2_5/1.5B_lora_grpo", file_path="qwen2_5/1.5B_lora_grpo.yaml"),
+            Config(name="qwen2_5/3B_lora_grpo", file_path="qwen2_5/3B_lora_grpo.yaml"),
+            Config(name="qwen2_5/7B_lora_grpo", file_path="qwen2_5/7B_lora_grpo.yaml"),
+
+            Config(name="qwen2_5/1.5B_qlora_grpo", file_path="qwen2_5/1.5B_qlora_grpo.yaml"),
+            Config(name="qwen2_5/3B_qlora_grpo", file_path="qwen2_5/3B_qlora_grpo.yaml"),
+            Config(name="qwen2_5/7B_qlora_grpo", file_path="qwen2_5/7B_qlora_grpo.yaml"),
+            Config(name="qwen2_5/14B_qlora_grpo", file_path="qwen2_5/14B_qlora_grpo.yaml"),
+            Config(name="qwen2_5/32B_qlora_grpo", file_path="qwen2_5/32B_qlora_grpo.yaml"),
         ],
         supports_distributed=True,
     ),
@@ -409,8 +425,8 @@ _ALL_RECIPES = [
         supports_distributed=True,
     ),
     Recipe(
-        name="ppo_full_finetune_single_device",
-        file_path="ppo_full_finetune_single_device.py",
+        name="full_ppo_single_device",
+        file_path="full_ppo_single_device.py",
         configs=[
             Config(
                 name="mistral/7B_full_ppo_low_memory",

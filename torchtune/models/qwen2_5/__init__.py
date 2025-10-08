@@ -5,6 +5,11 @@
 # LICENSE file in the root directory of this source tree.
 
 from ._model_builders import (
+    qlora_qwen2_5_1_5b_base,
+    qlora_qwen2_5_3b,
+    qlora_qwen2_5_7b_base,
+    qlora_qwen2_5_14b_base,
+    qlora_qwen2_5_32b_base,
     lora_qwen2_5_0_5b,
     lora_qwen2_5_14b_base,
     lora_qwen2_5_14b_instruct,
@@ -33,6 +38,11 @@ from ._model_builders import (
 )
 
 __all__ = [
+    "qlora_qwen2_5_1_5b_base",
+    "qlora_qwen2_5_3b",
+    "qlora_qwen2_5_7b_base",
+    "qlora_qwen2_5_14b_base",
+    "qlora_qwen2_5_32b_base",
     "lora_qwen2_5_0_5b",
     "lora_qwen2_5_14b_base",
     "lora_qwen2_5_14b_instruct",

@@ -145,7 +145,6 @@ class LoRALinear(nn.Module, AdapterModule):
         lora_out = (self.alpha / self.rank) * self.lora_b(lora_out)
         return out + lora_out
 
-
 class QATLoRALinear(LoRALinear):
     """
     LoRA linear layer with quantization-aware training (QAT) applied to the
