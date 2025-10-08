@@ -44,7 +44,11 @@ We show the reward dynamics during GRPO training of Qwen2.5-3B with different me
 From the results, we can see that LoRA-based methods (with rank 1), even with base model quantization, achieve comparable performance with full-parameter GRPO training.
 
 <p align="center">
-  <img src="assets/reward.png" alt="reward" width="600">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="assets/rewards_dark.png" width="630" >
+      <source media="(prefers-color-scheme: light)" srcset="assets/rewards_light.png" width="630">
+      <img alt="Alt text." style="border-radius: 8px;">
+    </picture>
 </p>
 
 ### Memory and Efficiency Benchmarking
