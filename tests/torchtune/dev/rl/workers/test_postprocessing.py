@@ -20,8 +20,8 @@ if _has_ray:
     from ray import remote
     from ray.util.queue import Queue
     from tensordict import NonTensorData
-    from torchtune.dev.rl.datatypes.trajectory import Trajectory
-    from torchtune.dev.rl.workers.postprocessing import PostProcessingWorker
+    from torchtune.rl.datatypes.trajectory import Trajectory
+    from torchtune.rl.workers.postprocessing import PostProcessingWorker
 else:
     # dummy decorator - never used bc tests are skipped
     def remote(*args, **kwargs):
@@ -94,7 +94,7 @@ class TestPostProcessingWorker:
             "num_steps": 3,
             "reward_functions": [
                 {
-                    "_component_": "torchtune.dev.rl.rewards.ThinkingAnswerFormattingReward",
+                    "_component_": "torchtune.rl.rewards.ThinkingAnswerFormattingReward",
                     "think_tag": "think",
                     "answer_tag": "answer",
                     "positive_reward": 1.0,

@@ -16,9 +16,9 @@ from omegaconf import DictConfig
 from torch.optim import Optimizer
 from torchrl.data import RayReplayBuffer
 from torchtune import config, modules, training, utils
-from torchtune.dev.rl.datatypes import Trajectory
-from torchtune.dev.rl.types import GRPOStats, GRPOTrajectory
-from torchtune.dev.rl.utils import stateless_init_process_group
+from torchtune.rl.datatypes import Trajectory
+from torchtune.rl.types import GRPOStats, GRPOTrajectory
+from torchtune.rl.utils import stateless_init_process_group
 from torchtune.generation import (
     get_causal_mask_from_padding_mask,
     get_position_ids_from_padding_mask,

@@ -10,7 +10,7 @@ import ray
 import torch
 from readerwriterlock import rwlock
 from torchtune import utils
-from torchtune.dev.rl.utils import stateless_init_process_group
+from torchtune.rl.utils import stateless_init_process_group
 
 log = utils.get_logger("DEBUG")
 

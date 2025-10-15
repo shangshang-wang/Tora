@@ -6,7 +6,7 @@
 
 import pytest
 import torch
-from torchtune.dev.rl.rewards import RewardOutput
+from torchtune.rl.rewards import RewardOutput
 
 
 class TestRewardOutput:

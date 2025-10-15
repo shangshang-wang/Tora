@@ -30,7 +30,7 @@ tokenizer:
 
 # Data!
 dataset:
-  _component_: torchtune.dev.grpo.gsm8k.gsm8k_dataset
+  _component_: torchtune.rl.gsm8k.gsm8k_dataset
   partition: 1-9/10
 shuffle: False
 
@@ -92,17 +92,17 @@ training:
     lr: 1e-5
     fused: True
   loss:
-    _component_: torchtune.dev.rl.linear_grpo_loss.LinearGRPOLoss
+    _component_: torchtune.rl.loss.LinearGRPOLoss
     kl_coeff: 0.01
     epsilon: 0.2
   seed: null
 
 reward_functions:
-    - _component_: torchtune.dev.rl.rewards.FormattedMathCorrectnessReward
+    - _component_: torchtune.rl.rewards.FormattedMathCorrectnessReward
       answer_tag: answer
       positive_reward: 10.0
       negative_reward: 0.0
-    - _component_: torchtune.dev.rl.rewards.ThinkingAnswerFormattingReward
+    - _component_: torchtune.rl.rewards.ThinkingAnswerFormattingReward
       think_tag: think
       answer_tag: answer
       positive_reward: 1.0
