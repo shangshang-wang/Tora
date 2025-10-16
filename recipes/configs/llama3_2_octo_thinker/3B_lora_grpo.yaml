@@ -88,14 +88,13 @@ temperature: 1.0
 
 ppo_epochs: 1
 
-num_steps: 1000
-
 clip_grad_norm: 1.0
 
-epochs: 10
+epochs: 1
+#early_stop_steps: 200
 optimizer:
   _component_: torch.optim.AdamW
-  lr: 1e-3
+  lr: 5e-3
   fused: True
 lr_scheduler:
   _component_: torchtune.training.lr_schedulers.get_cosine_schedule_with_warmup
