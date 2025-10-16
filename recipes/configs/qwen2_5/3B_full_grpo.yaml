@@ -82,11 +82,10 @@ temperature: 1.0
 
 ppo_epochs: 1
 
-num_steps: 200
-
 clip_grad_norm: 1.0
 
-epochs: 10
+epochs: 1
+#early_stop_steps: 200
 optimizer:
   _component_: torch.optim.AdamW
   lr: 1e-5

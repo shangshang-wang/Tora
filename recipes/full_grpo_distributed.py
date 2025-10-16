@@ -235,7 +235,7 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
 
         self._ppo_epochs = cfg.ppo_epochs
         self._save_every_n_epochs = cfg.save_every_n_epochs
-        self._total_steps = cfg.num_steps
+        self._total_steps = cfg.get("early_stop_steps", None)
 
         # Parse reward function names from the config for named logging
         self.reward_names = []
@@ -837,9 +837,18 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
 
         training_completed = False
         self._profiler.start()
+
+        # Global target
+        total_target = self.total_epochs * self._steps_per_epoch
+        if self._total_steps:  # cfg.early_stop_steps may stop earlier
+            total_target = min(total_target, self._total_steps)
+
+        pbar = tqdm(total=total_target, disable=not self._is_rank_zero)
+        if self._steps_run:       # resume support
+            pbar.update(self._steps_run)
+
         # self.epochs_run should be non-zero when we're resuming from a checkpoint
         for curr_epoch in range(self._epochs_run, self.total_epochs):
-            pbar = tqdm(total=self._steps_per_epoch, disable=not self._is_rank_zero)
             self._dataloader.sampler.set_epoch(curr_epoch)
             for idx, batch in enumerate(self._dataloader):
                 # Start tracking CUDA memory for active steps for just the first epoch

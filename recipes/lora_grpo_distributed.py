@@ -163,7 +163,7 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
         self.total_epochs = cfg.epochs
         self.global_step = 0
         self._steps_run = 0
-        self._total_steps = cfg.num_steps
+        self._total_steps = cfg.get("early_stop_steps", None)
         self._resume_from_checkpoint = cfg.resume_from_checkpoint
         self._save_adapter_weights_only = cfg.get("save_adapter_weights_only", False)
         self._compile = cfg.get("compile", False)
@@ -968,9 +968,17 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
         training_completed = False
         self._profiler.start()
 
+        # Global target
+        total_target = self.total_epochs * self._steps_per_epoch
+        if self._total_steps:  # cfg.early_stop_steps may stop earlier
+            total_target = min(total_target, self._total_steps)
+
+        pbar = tqdm(total=total_target, disable=not self._is_rank_zero)
+        if self._steps_run:       # resume support
+            pbar.update(self._steps_run)
+
         # self.epochs_run should be non-zero when we're resuming from a checkpoint
         for curr_epoch in range(self._epochs_run, self.total_epochs):
-            pbar = tqdm(total=self._steps_per_epoch, disable=not self._is_rank_zero)
             self._dataloader.sampler.set_epoch(curr_epoch)
 
             for idx, batch in enumerate(self._dataloader):
