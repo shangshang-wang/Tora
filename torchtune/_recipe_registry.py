@@ -28,6 +28,8 @@ _ALL_RECIPES = [
         configs=[
             Config(name="qwen2_5/1.5B_full_grpo", file_path="qwen2_5/1.5B_full_grpo.yaml"),
             Config(name="qwen2_5/3B_full_grpo", file_path="qwen2_5/3B_full_grpo.yaml"),
+
+            Config(name="llama3_2_octo_thinker/3B_full_grpo", file_path="llama3_2_octo_thinker/3B_full_grpo.yaml"),
         ],
         supports_distributed=True,
     ),
@@ -44,6 +46,10 @@ _ALL_RECIPES = [
             Config(name="qwen2_5/7B_qlora_grpo", file_path="qwen2_5/7B_qlora_grpo.yaml"),
             Config(name="qwen2_5/14B_qlora_grpo", file_path="qwen2_5/14B_qlora_grpo.yaml"),
             Config(name="qwen2_5/32B_qlora_grpo", file_path="qwen2_5/32B_qlora_grpo.yaml"),
+
+            Config(name="qwen2_5_deepseek_distilled/1.5B_lora_grpo", file_path="qwen2_5_deepseek_distilled/1.5B_lora_grpo.yaml"),
+
+            Config(name="llama3_2_octo_thinker/3B_lora_grpo", file_path="llama3_2_octo_thinker/3B_lora_grpo.yaml"),
         ],
         supports_distributed=True,
     ),
