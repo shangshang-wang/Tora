@@ -24,7 +24,7 @@ from torchtune.modules import (
     VisionRotaryPositionalEmbeddings,
 )
 from torchtune.modules.common_utils import reparametrize_as_dtype_state_dict_post_hook
-from torchtune.modules.peft import DoRALinear, LORA_ATTN_MODULES, LoRALinear
+from torchtune.modules.peft import DoRALinear, DoRALinearCache, LORA_ATTN_MODULES, LoRALinear
 from torchtune.modules.vision_transformer import CLSProjection, VisionTransformer
 
 
@@ -287,7 +287,7 @@ def lora_clip_vision_encoder(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
     **quantization_kwargs,
 ) -> VisionTransformer:
@@ -323,7 +323,7 @@ def lora_clip_vision_encoder(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): LoRA dropout probability. Default: 0.0
-        use_dora (bool): Whether to use DoRA layers instead of LoRA layers. Default is ``False``.
+        lora_type (str): Type of low-rank adaptation to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base: (bool): Whether to quantize base model weights or not. Only applied to base
             weights within linear layers LoRA is applied to. The final output linear projection is not
             supported for quantization currently.
@@ -356,7 +356,7 @@ def lora_clip_vision_encoder(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
         attn_bias=attn_bias,
         **quantization_kwargs,
@@ -371,7 +371,7 @@ def lora_clip_vision_encoder(
             lora_alpha=lora_alpha,
             quantize_base=quantize_base,
             lora_dropout=lora_dropout,
-            use_dora=use_dora,
+            lora_type=lora_type,
             **quantization_kwargs,
         )
     else:
@@ -451,7 +451,7 @@ def lora_clip_attention(
     lora_rank: int,
     lora_alpha: float,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
     **quantization_kwargs,
 ) -> MultiHeadAttention:
@@ -477,7 +477,7 @@ def lora_clip_attention(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): LoRA dropout probability. Default: 0.0
-        use_dora (bool): Whether to use DoRA layers instead of LoRA layers. Default is ``False``.
+        lora_type (str): Type of low-rank adaptation to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base (bool): Whether to quantize base model parameters for linear layers
             LoRA is being applied to. Default is ``False``.
         **quantization_kwargs: Keyword arguments to pass to `to_nf4` when quantizing the base linear weight.
@@ -497,7 +497,13 @@ def lora_clip_attention(
             f"Must pass one or more of {LORA_ATTN_MODULES} as lora_modules"
         )
 
-    adapter_cls = DoRALinear if use_dora else LoRALinear
+    if lora_type == "dora":
+        adapter_cls = DoRALinear
+    elif lora_type == "dora_cache":
+        adapter_cls = DoRALinearCache
+    else:
+        adapter_cls = LoRALinear
+
     q_proj = (
         adapter_cls(
             embed_dim,
@@ -609,14 +615,20 @@ def lora_clip_mlp(
     lora_rank: int,
     lora_alpha: float,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
     **quantization_kwargs,
 ) -> FeedForward:
     """
     Build the MLP layer with LoRA applied to the gate and down projections.
     """
-    adapter_cls = DoRALinear if use_dora else LoRALinear
+    if lora_type == "dora":
+        adapter_cls = DoRALinear
+    elif lora_type == "dora_cache":
+        adapter_cls = DoRALinearCache
+    else:
+        adapter_cls = LoRALinear
+
     gate_proj = adapter_cls(
         in_dim=in_dim,
         out_dim=hidden_dim,
