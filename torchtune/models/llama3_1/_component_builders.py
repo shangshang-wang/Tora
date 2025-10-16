@@ -21,7 +21,7 @@ from torchtune.modules import (
 
 from torchtune.modules.common_utils import _register_reparametrize_state_dict_hooks
 
-from torchtune.modules.peft import DoRALinear, LORA_ATTN_MODULES, LoRALinear
+from torchtune.modules.peft import DoRALinear, DoRALinearCache, LORA_ATTN_MODULES, LoRALinear
 
 """
 Component builders for the Llama3.1 model and popular variants such as LoRA.
@@ -156,7 +156,7 @@ def lora_llama3_1(
     lora_rank: int,
     lora_alpha: float,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     # Quantization args
     quantize_base: bool = False,
 ) -> TransformerDecoder:
@@ -192,7 +192,7 @@ def lora_llama3_1(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): LoRA dropout probability. Default: 0.0
-        use_dora (bool): Whether to use DoRA layers instead of LoRA layers. Default is ``False``.
+        lora_type (str): Type of LoRA layer to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base: (bool): Whether to quantize base model weights or not. Only applied to base
             weights within linear layers LoRA is applied to. The final output linear projection is not
             supported for quantization currently.
@@ -221,7 +221,7 @@ def lora_llama3_1(
             lora_rank=lora_rank,
             lora_alpha=lora_alpha,
             lora_dropout=lora_dropout,
-            use_dora=use_dora,
+            lora_type=lora_type,
             quantize_base=quantize_base,
         )
 
@@ -233,7 +233,7 @@ def lora_llama3_1(
                 lora_alpha=lora_alpha,
                 quantize_base=quantize_base,
                 lora_dropout=lora_dropout,
-                use_dora=use_dora,
+                lora_type=lora_type,
             )
         else:
             mlp = llama3_mlp(dim=embed_dim, hidden_dim=hidden_dim, quantize_base=quantize_base)
@@ -249,7 +249,14 @@ def lora_llama3_1(
     tok_embeddings = nn.Embedding(vocab_size, embed_dim)
 
     # TODO: quantize_base is not applied to final output_proj currently.
-    adapter_cls = DoRALinear if use_dora else LoRALinear
+
+    if lora_type == "dora":
+        adapter_cls = DoRALinear
+    elif lora_type == "dora_cache":
+        adapter_cls = DoRALinearCache
+    else:
+        adapter_cls = LoRALinear
+
     output_proj = (
         adapter_cls(embed_dim, vocab_size, rank=lora_rank, alpha=lora_alpha, dropout=lora_dropout)
         if apply_lora_to_output
@@ -291,7 +298,7 @@ def lora_llama3_attention(
     lora_rank: int,
     lora_alpha: float,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> MultiHeadAttention:
     """
@@ -322,7 +329,7 @@ def lora_llama3_attention(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): LoRA dropout probability. Default: 0.0
-        use_dora (bool): Whether to use DoRA layers instead of LoRA layers. Default is ``False``.
+        lora_type (str): Type of LoRA layer to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base (bool): Whether to quantize base model parameters for linear layers
             LoRA is being applied to. Default is ``False``.
 
@@ -334,7 +341,14 @@ def lora_llama3_attention(
         ValueError: If lora_modules arg is an empty list
     """
     num_kv_heads = num_kv_heads if num_kv_heads else num_heads
-    adapter_cls = DoRALinear if use_dora else LoRALinear
+
+    if lora_type == "dora":
+        adapter_cls = DoRALinear
+    elif lora_type == "dora_cache":
+        adapter_cls = DoRALinearCache
+    else:
+        adapter_cls = LoRALinear
+
     q_proj = (
         adapter_cls(
             embed_dim,
@@ -426,10 +440,17 @@ def lora_llama3_mlp(
     lora_rank: int,
     lora_alpha: float,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> FeedForward:
-    adapter_cls = DoRALinear if use_dora else LoRALinear
+
+    if lora_type == "dora":
+        adapter_cls = DoRALinear
+    elif lora_type == "dora_cache":
+        adapter_cls = DoRALinearCache
+    else:
+        adapter_cls = LoRALinear
+
     gate_proj = adapter_cls(
         in_dim=dim,
         out_dim=hidden_dim,

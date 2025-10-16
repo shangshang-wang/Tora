@@ -41,7 +41,7 @@ from torchtune.modules.common_utils import reparametrize_as_dtype_state_dict_pos
 
 from torchtune.modules.model_fusion import FusionEmbedding, FusionLayer
 
-from torchtune.modules.peft import DoRALinear, LORA_ATTN_MODULES, LoRALinear
+from torchtune.modules.peft import DoRALinear, DoRALinearCache, LORA_ATTN_MODULES, LoRALinear
 
 
 """
@@ -350,7 +350,7 @@ def lora_llama3_2_vision_encoder(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
     **quantization_kwargs,
 ) -> Llama3VisionEncoder:
@@ -393,7 +393,7 @@ def lora_llama3_2_vision_encoder(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): LoRA dropout probability. Default: 0.0
-        use_dora (bool): Whether to use DoRA layers instead of LoRA layers. Default is ``False``.
+        lora_type (str): Type of low-rank adaptation to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base: (bool): Whether to quantize base model weights or not. Only applied to base
             weights within linear layers LoRA is applied to. The final output linear projection is not
             supported for quantization currently.
@@ -408,7 +408,7 @@ def lora_llama3_2_vision_encoder(
         "lora_rank": lora_rank,
         "lora_alpha": lora_alpha,
         "lora_dropout": lora_dropout,
-        "use_dora": use_dora,
+        "lora_type": lora_type,
         "quantize_base": quantize_base,
         **quantization_kwargs,
     }
@@ -484,7 +484,7 @@ def lora_llama3_2_vision_decoder(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -525,7 +525,7 @@ def lora_llama3_2_vision_decoder(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): LoRA dropout probability. Default: 0.0
-        use_dora (bool): Whether to use DoRA layers instead of LoRA layers. Default is ``False``.
+        lora_type (str): Type of low-rank adaptation to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base: (bool): Whether to quantize base model weights or not. Only applied to base
             weights within linear layers LoRA is applied to. The final output linear projection is not
             supported for quantization currently.
@@ -555,7 +555,7 @@ def lora_llama3_2_vision_decoder(
                 lora_rank=lora_rank,
                 lora_alpha=lora_alpha,
                 lora_dropout=lora_dropout,
-                use_dora=use_dora,
+                lora_type=lora_type,
                 quantize_base=quantize_base,
             )
         else:
@@ -580,7 +580,7 @@ def lora_llama3_2_vision_decoder(
                 lora_alpha=lora_alpha,
                 quantize_base=quantize_base,
                 lora_dropout=lora_dropout,
-                use_dora=use_dora,
+                lora_type=lora_type,
             )
         else:
             mlp = llama3_mlp(
@@ -612,7 +612,7 @@ def lora_llama3_2_vision_decoder(
                     lora_rank=lora_rank,
                     lora_alpha=lora_alpha,
                     lora_dropout=lora_dropout,
-                    use_dora=use_dora,
+                    lora_type=lora_type,
                     quantize_base=quantize_base,
                 )
             else:
@@ -640,7 +640,7 @@ def lora_llama3_2_vision_decoder(
                     lora_alpha=lora_alpha,
                     quantize_base=quantize_base,
                     lora_dropout=lora_dropout,
-                    use_dora=use_dora,
+                    lora_type=lora_type,
                 )
             else:
                 mlp = llama3_mlp(
@@ -662,7 +662,14 @@ def lora_llama3_2_vision_decoder(
     tok_embeddings = FusionEmbedding(vocab_size, num_special_tokens, embed_dim)
 
     # TODO: quantize_base is not applied to final output_proj currently.
-    adapter_cls = DoRALinear if use_dora else LoRALinear
+
+    if lora_type == "dora":
+        adapter_cls = DoRALinear
+    elif lora_type == "dora_cache":
+        adapter_cls = DoRALinearCache
+    else:
+        adapter_cls = LoRALinear
+
     output_proj = (
         adapter_cls(
             embed_dim,
@@ -710,7 +717,7 @@ def lora_llama3_2_vision_projection_head(
     lora_rank: int,
     lora_alpha: float,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
     **quantization_kwargs,
 ) -> Llama3VisionProjectionHead:
@@ -731,7 +738,7 @@ def lora_llama3_2_vision_projection_head(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): LoRA dropout probability. Default: 0.0
-        use_dora (bool): Whether to use DoRA layers instead of LoRA layers. Default is ``False``.
+        lora_type (str): Type of low-rank adaptation to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base (bool): Whether to quantize base model parameters for linear layers
             LoRA is being applied to. Default is ``False``.
 
@@ -755,7 +762,7 @@ def lora_llama3_2_vision_projection_head(
             lora_rank=lora_rank,
             lora_alpha=lora_alpha,
             lora_dropout=lora_dropout,
-            use_dora=use_dora,
+            lora_type=lora_type,
             quantize_base=quantize_base,
             **quantization_kwargs,
         )
@@ -770,7 +777,7 @@ def lora_llama3_2_vision_projection_head(
                 lora_alpha=lora_alpha,
                 quantize_base=quantize_base,
                 lora_dropout=lora_dropout,
-                use_dora=use_dora,
+                lora_type=lora_type,
                 **quantization_kwargs,
             )
         else:
@@ -798,7 +805,14 @@ def lora_llama3_2_vision_projection_head(
     # cross encoding
     # TODO: quantize_base is not applied to final output_proj currently.
     proj_in = clip_embed_dim * (num_hidden_inputs + 1)
-    adapter_cls = DoRALinear if use_dora else LoRALinear
+
+    if lora_type == "dora":
+        adapter_cls = DoRALinear
+    elif lora_type == "dora_cache":
+        adapter_cls = DoRALinearCache
+    else:
+        adapter_cls = LoRALinear
+
     output_proj = (
         adapter_cls(
             proj_in,

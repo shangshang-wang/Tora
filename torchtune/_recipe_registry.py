@@ -44,6 +44,8 @@ _ALL_RECIPES = [
             Config(name="qwen2_5/7B_qlora_grpo", file_path="qwen2_5/7B_qlora_grpo.yaml"),
             Config(name="qwen2_5/14B_qlora_grpo", file_path="qwen2_5/14B_qlora_grpo.yaml"),
             Config(name="qwen2_5/32B_qlora_grpo", file_path="qwen2_5/32B_qlora_grpo.yaml"),
+
+            Config(name="llama3_2_vision/11B_qlora_grpo", file_path="llama3_2_vision/11B_qlora_grpo.yaml"),
         ],
         supports_distributed=True,
     ),
