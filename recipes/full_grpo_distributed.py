@@ -39,8 +39,6 @@ log = utils.get_logger("DEBUG")
 import torch._dynamo.config as dynamo_config
 dynamo_config.recompile_limit = 100
 
-CHECKPOINT_STEPS_RUN_KEY = "dataloader_steps_run"
-
 
 class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
     def __init__(self, cfg: DictConfig) -> None:
