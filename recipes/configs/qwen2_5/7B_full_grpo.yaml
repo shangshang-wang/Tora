@@ -1,4 +1,4 @@
-# Config for sync multi-node GRPO in lora_grpo_distributed.py
+# Config for sync multi-node GRPO in full_grpo_distributed.py
 # using a Qwen-7B Base model (which is known to train quickly on this task).
 #
 # Also check out the async implementation of this workflow in this directory.
@@ -8,12 +8,12 @@
 #   tune download Qwen/Qwen2.5-7B --output-dir /tmp/Qwen2.5-7B
 #
 # To launch on 2 devices, run the following command from root:
-# tune run --nproc_per_node 2 lora_grpo_distributed --config qwen2_5/7B_lora_grpo
+# tune run --nproc_per_node 2 full_grpo_distributed --config qwen2_5/7B_full_grpo
 #
 # You can add specific overrides through the command line. For example
 # to override the checkpointer directory while launching training
 # you can run:
-#   tune run --nproc_per_node 2 lora_grpo_distributed --config qwen2_5/7B_lora_grpo checkpointer.checkpoint_dir=<YOUR_CHECKPOINT_DIR>
+#   tune run --nproc_per_node 2 full_grpo_distributed --config qwen2_5/7B_full_grpo checkpointer.checkpoint_dir=<YOUR_CHECKPOINT_DIR>
 #
 # This config works best when the model is being fine-tuned on 2+ GPUs.
 #
@@ -43,14 +43,7 @@ shuffle: False
 
 # Model Arguments
 model:
-  _component_: torchtune.models.qwen2_5.lora_qwen2_5_7b_base
-  lora_attn_modules: ['q_proj', 'v_proj', 'output_proj']
-  apply_lora_to_mlp: True
-  apply_lora_to_output: False
-  lora_rank: 1  # higher increases accuracy and memory
-  lora_alpha: 2  # usually alpha=2*rank
-  lora_dropout: 0.0
-  lora_type: "lora" # "lora", "dora", "dora_cache"
+  _component_: torchtune.models.qwen2_5.qwen2_5_7b_base
 
 checkpointer:
   _component_: torchtune.training.FullModelHFCheckpointer
@@ -78,7 +71,6 @@ ref_checkpointer:
   recipe_checkpoint: null
   output_dir: ${output_dir}/ref  # shouldn't be used?
   model_type: QWEN2
-fsdp_reshard_after_forward: False
 
 
 # Fine-tuning arguments
@@ -99,7 +91,7 @@ save_every_n_epochs: 1
 resume_from_checkpoint: False
 optimizer:
   _component_: torch.optim.AdamW
-  lr: 1e-4
+  lr: 5e-6
   fused: True
 lr_scheduler:
   _component_: torchtune.training.lr_schedulers.get_cosine_schedule_with_warmup

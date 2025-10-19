@@ -87,9 +87,6 @@ ref_checkpointer:
   model_type: QWEN2
 
 
-resume_from_checkpoint: False
-save_every_n_epochs: 1
-
 # Fine-tuning arguments
 batch_size: 2
 grpo_samples: 4
@@ -99,11 +96,13 @@ top_k: null
 temperature: 1.0
 
 ppo_epochs: 1
-
 clip_grad_norm: 1.0
 
 epochs: 1
-#early_stop_steps: 200
+#early_stop_steps: 1000
+save_every_n_steps: 200
+save_every_n_epochs: 1
+resume_from_checkpoint: False
 optimizer:
   _component_: torch.optim.AdamW
   lr: 1e-3
