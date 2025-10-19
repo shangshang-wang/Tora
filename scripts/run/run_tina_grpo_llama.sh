@@ -5,7 +5,7 @@ echo "PYTHON ENV: $(which python)"
 
 source "./scripts/set/set_vars.sh"
 
-export CUDA_VISIBLE_DEVICES=0,1
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 GPU_COUNT=$(python -c "import torch; print(torch.cuda.device_count())")
 
 echo -e "\nNumber of GPUs: ${GPU_COUNT}\n"
