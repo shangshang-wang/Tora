@@ -37,6 +37,8 @@ log = utils.get_logger("DEBUG")
 import torch._dynamo.config as dynamo_config
 dynamo_config.recompile_limit = 1000
 
+CHECKPOINT_STEPS_RUN_KEY = "dataloader_steps_run"
+
 
 class LoRAGRPORecipeDistributed(FTRecipeInterface):
     """
@@ -77,14 +79,14 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
 
                 Total Batch Size = batch_size * number of GPUs * gradient accumulation steps.
 
-        - Checkpointing. Model weights are checkpointed both at the end of each epoch and at the end of
-            training. Currently we checkpoint both the adapter weights (trainable params only) and the
+        - Checkpointing. Model weights can be checkpointed every ``save_every_n_steps`` training steps
+            (if configured) or at the end of each epoch, and a final checkpoint is always saved when
+            training exits. We checkpoint both the adapter weights (trainable params only) and the
             complete merged weights (adapter weights added back to the base model).
 
-            Optimizer State and recipe state (seed, total_epochs, number of epochs run etc) are
-            only saved at the end of a given epoch and used in case of resuming training. Resuming
-            training is controlled by the ``resume_from_checkpoint`` flag. Mid-epoch checkpointing is
-            currently not supported.
+            Optimizer state and recipe state (seed, total_epochs, number of epochs run, dataloader state, etc.)
+            are saved for intermediate checkpoints and enable resuming training via the
+            ``resume_from_checkpoint`` flag.
 
         - Logging. Terminal, Disk, WandB and TensorBoard are all supported.
 
@@ -154,6 +156,11 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
                 "Enabling activation offloading should reduce memory further.",
             )
 
+        self._save_every_n_steps = cfg.get("save_every_n_steps", None)
+        if self._save_every_n_steps is not None:
+            if self._save_every_n_steps <= 0:
+                raise ValueError("save_every_n_steps must be a positive integer.")
+
         # These attributes constitute the recipe state and are updated by ``load_checkpoint``
         # when ``resume_from_checkpoint`` is ``True``
         self.seed = training.set_seed(
@@ -169,6 +176,9 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
         self._compile = cfg.get("compile", False)
         self._clip_grad_norm = cfg.get("clip_grad_norm", None)
         self._rng = torch.Generator(self._device).manual_seed(self.seed)
+        self._restored_steps_run: Optional[int] = None
+        self._restored_global_step: Optional[int] = None
+        self._restored_steps_per_epoch: Optional[int] = None
 
     def _update_recipe_state(self, ckpt_dict: dict[str, Any]) -> None:
         """
@@ -177,6 +187,9 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
         try:
             self._epochs_run = ckpt_dict[training.EPOCHS_KEY]
             self._rng.set_state(ckpt_dict[training.RNG_KEY])
+            self._restored_global_step = ckpt_dict.get(training.STEPS_KEY, None)
+            self._restored_steps_run = ckpt_dict.get(CHECKPOINT_STEPS_RUN_KEY, None)
+            self._restored_steps_per_epoch = ckpt_dict.get(training.MAX_STEPS_KEY, None)
 
             # on mismatch, warn the user and prevent the override
             if self.seed != ckpt_dict[training.SEED_KEY]:
@@ -304,7 +317,25 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
         # Finally update the recipe state which can only be correctly set after all of the
         # other components have been initialized and updated.
         self._steps_per_epoch = len(self._dataloader)
-        self.global_step = self._epochs_run * self._steps_per_epoch
+        if (
+            self._restored_steps_per_epoch is not None
+            and self._restored_steps_per_epoch != self._steps_per_epoch
+        ):
+            warn(
+                message=(
+                    "Steps per epoch derived from the checkpoint "
+                    f"({self._restored_steps_per_epoch}) does not match the current "
+                    f"value ({self._steps_per_epoch}). Using the current value."
+                )
+            )
+        if self._restored_steps_run is not None:
+            self._steps_run = self._restored_steps_run
+        else:
+            self._steps_run = self._epochs_run * self._steps_per_epoch
+        if self._restored_global_step is not None:
+            self.global_step = self._restored_global_step
+        else:
+            self.global_step = self._epochs_run * self._steps_per_epoch
 
         # Setup lr scheduler
         self._lr_scheduler = self._setup_lr_scheduler(
@@ -324,7 +355,9 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
         self.batch_size = cfg.batch_size
         self._forward_batch_size = cfg.forward_batch_size
         self._ppo_epochs = cfg.ppo_epochs
-        self._save_every_n_epochs = cfg.save_every_n_epochs
+        self._save_every_n_epochs = cfg.get("save_every_n_epochs", 1)
+        if self._save_every_n_epochs <= 0:
+            raise ValueError("save_every_n_epochs must be a positive integer.")
 
         # Parse reward function names from the config for named logging
         self.reward_names = []
@@ -616,21 +649,33 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
 
         if dataloader_state_dict is not None:
             dataloader.load_state_dict(dataloader_state_dict)
-            # B/c we currently only save at epoch boundaries, if we cut the previous epoch short
-            # we need to force the dataloader to finish the last iteration before it's actually used
-            list(dataloader)
+            should_drain = True
+            if self._resume_from_checkpoint:
+                steps_per_epoch = len(dataloader)
+                restored_steps_run = self._restored_steps_run
+                if (
+                    restored_steps_run is not None
+                    and steps_per_epoch > 0
+                ):
+                    expected_steps_before_current_epoch = self._epochs_run * steps_per_epoch
+                    steps_into_epoch = restored_steps_run - expected_steps_before_current_epoch
+                    should_drain = steps_into_epoch <= 0
+            if should_drain:
+                # Draining ensures we advance to the next epoch when resuming from a boundary checkpoint.
+                list(dataloader)
 
         utils.log_rank_zero(self._logger, "Dataset and Sampler are initialized.")
 
         return dataloader
 
-    def save_checkpoint(self, epoch: int) -> None:
+    def save_checkpoint(self, epoch: int, *, is_final: bool = False) -> None:
         """
         Checkpoint the state of the recipe.
         """
         # final dict passed onto the checkpointer
         checkpoint_dict = {}
-        intermediate_checkpoint = epoch + 1 < self.total_epochs
+        intermediate_checkpoint = not is_final
+        epoch = max(epoch, 0)
 
         utils.log_rank_zero(
             log,
@@ -699,23 +744,35 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
             if adapter_state_dict is not None:
                 checkpoint_dict.update({training.ADAPTER_KEY: adapter_state_dict})
 
-            # if training is in-progress, checkpoint the optimizer state and recipe state
+            checkpoint_dict.update(
+                {
+                    training.SEED_KEY: self.seed,
+                    training.EPOCHS_KEY: self._epochs_run,
+                    training.TOTAL_EPOCHS_KEY: self.total_epochs,
+                    training.RNG_KEY: self._rng.get_state(),
+                    training.STEPS_KEY: self.global_step,
+                    training.MAX_STEPS_KEY: self._steps_per_epoch,
+                    CHECKPOINT_STEPS_RUN_KEY: self._steps_run,
+                }
+            )
+
+            # if training is in-progress, checkpoint the optimizer state and dataloader state
             if intermediate_checkpoint:
                 checkpoint_dict.update(
                     {
                         training.OPT_KEY: opt_state_dict,
-                        training.SEED_KEY: self.seed,
-                        training.EPOCHS_KEY: self._epochs_run,
-                        training.TOTAL_EPOCHS_KEY: self.total_epochs,
-                        training.RNG_KEY: self._rng.get_state(),
                         training.DATALOADER_KEY: self._dataloader.state_dict(),
                     }
                 )
 
+            dir_prefix = "step" if self._save_every_n_steps is not None else "epoch"
+            step_value: Optional[int] = self._steps_run if dir_prefix == "step" else None
             self._checkpointer.save_checkpoint(
                 checkpoint_dict,
                 epoch=epoch,
                 intermediate_checkpoint=intermediate_checkpoint,
+                dir_prefix=dir_prefix,
+                step=step_value,
             )
             log.info(f"Saving checkpoint took {time.perf_counter() - start:.2f} secs")
 
@@ -966,6 +1023,7 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
         grad_norm = None
 
         training_completed = False
+        interrupted = False
         self._profiler.start()
 
         # Global target
@@ -977,100 +1035,118 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
         if self._steps_run:       # resume support
             pbar.update(self._steps_run)
 
-        # self.epochs_run should be non-zero when we're resuming from a checkpoint
-        for curr_epoch in range(self._epochs_run, self.total_epochs):
-            self._dataloader.sampler.set_epoch(curr_epoch)
+        last_epoch = max(self._epochs_run - 1, 0)
+        try:
+            # self.epochs_run should be non-zero when we're resuming from a checkpoint
+            for curr_epoch in range(self._epochs_run, self.total_epochs):
+                last_epoch = curr_epoch
+                self._dataloader.sampler.set_epoch(curr_epoch)
 
-            for idx, batch in enumerate(self._dataloader):
-                # Start tracking CUDA memory for active steps for just the first epoch
-                if (
-                        self._is_rank_zero
-                        and curr_epoch == 0
-                        and self.profiler_profile_memory
-                        and idx == self.profiler_wait_steps + self.profiler_warmup_steps
-                        and self._device.type == "cuda"
-                ):
-                    torch.cuda.memory._record_memory_history()
+                for idx, batch in enumerate(self._dataloader):
+                    # Start tracking CUDA memory for active steps for just the first epoch
+                    if (
+                            self._is_rank_zero
+                            and curr_epoch == 0
+                            and self.profiler_profile_memory
+                            and idx == self.profiler_wait_steps + self.profiler_warmup_steps
+                            and self._device.type == "cuda"
+                    ):
+                        torch.cuda.memory._record_memory_history()
 
-                tokens = batch["tokens"]  # type: ignore
-                answers = batch["answers"]  # type: ignore
-                tokens = tokens.to(self._device)  # [B, P]
+                    tokens = batch["tokens"]  # type: ignore
+                    answers = batch["answers"]  # type: ignore
+                    tokens = tokens.to(self._device)  # [B, P]
 
-                _, context_length = tokens.shape
+                    _, context_length = tokens.shape
 
-                trajectory = self.generate_trajectory_batched(tokens, answers)
-                torch.distributed.barrier()
+                    trajectory = self.generate_trajectory_batched(tokens, answers)
+                    torch.distributed.barrier()
 
-                grpo_stats: list[GRPOStats] = []
-                for _ in range(self._ppo_epochs):
-                    step_stats = self.grpo_step(trajectory, context_length)
-                    grpo_stats.append(step_stats)
+                    grpo_stats: list[GRPOStats] = []
+                    for _ in range(self._ppo_epochs):
+                        step_stats = self.grpo_step(trajectory, context_length)
+                        grpo_stats.append(step_stats)
 
-                    if self._clip_grad_norm is not None:
-                        grad_norm = torch.nn.utils.clip_grad_norm_(
-                            self._model.parameters(),
-                            max_norm=float(self._clip_grad_norm),
+                        if self._clip_grad_norm is not None:
+                            grad_norm = torch.nn.utils.clip_grad_norm_(
+                                self._model.parameters(),
+                                max_norm=float(self._clip_grad_norm),
+                            )
+
+                        torch.distributed.barrier()
+                        self._optimizer.step()
+                        self._optimizer.zero_grad(set_to_none=True)
+                        torch.distributed.barrier()
+
+                        self.global_step += 1
+
+                        if self._lr_scheduler is not None:
+                            self._lr_scheduler.step()
+
+                    # Stop tracking CUDA memory now that active steps are complete
+                    if (
+                            self._is_rank_zero
+                            and curr_epoch == 0
+                            and self.profiler_profile_memory
+                            and idx
+                            == self.profiler_wait_steps
+                            + self.profiler_warmup_steps
+                            + self.profiler_active_steps
+                            and self._device.type == "cuda"
+                    ):
+                        torch.cuda.memory._record_memory_history(enabled=None)
+
+                    self._steps_run += 1
+                    if self._save_every_n_steps is not None:
+                        if self._steps_run % self._save_every_n_steps == 0:
+                            self.save_checkpoint(curr_epoch)
+
+                    if self._steps_run % self._log_every_n_steps == 0:
+                        extra_metrics = {}
+                        extra_metrics["lr"] = get_lr(self._optimizer)
+                        if grad_norm is not None:
+                            extra_metrics["grad_norm"] = grad_norm
+
+                        self.log_metrics(
+                            trajectory,
+                            GRPOStats(*map(torch.stack, zip(*grpo_stats))),
+                            **extra_metrics,
                         )
 
-                    torch.distributed.barrier()
-                    self._optimizer.step()
-                    self._optimizer.zero_grad(set_to_none=True)
-                    torch.distributed.barrier()
+                    self.cleanup_after_step(trajectory, grpo_stats)
+                    self._profiler.step()
 
-                    self.global_step += 1
-
-                    if self._lr_scheduler is not None:
-                        self._lr_scheduler.step()
-
-                # Stop tracking CUDA memory now that active steps are complete
-                if (
-                        self._is_rank_zero
-                        and curr_epoch == 0
-                        and self.profiler_profile_memory
-                        and idx
-                        == self.profiler_wait_steps
-                        + self.profiler_warmup_steps
-                        + self.profiler_active_steps
-                        and self._device.type == "cuda"
-                ):
-                    torch.cuda.memory._record_memory_history(enabled=None)
-
-                self._steps_run += 1
-                if self._steps_run % self._log_every_n_steps == 0:
-                    extra_metrics = {}
-                    extra_metrics["lr"] = get_lr(self._optimizer)
-                    if grad_norm is not None:
-                        extra_metrics["grad_norm"] = grad_norm
-
-                    self.log_metrics(
-                        trajectory,
-                        GRPOStats(*map(torch.stack, zip(*grpo_stats))),
-                        **extra_metrics,
+                    pbar.update(1)
+                    pbar.set_description(
+                        f"{curr_epoch + 1}|{self.global_step}|Loss: {grpo_stats[-1].loss.item():.4f}"
                     )
 
-                self.cleanup_after_step(trajectory, grpo_stats)
-                self._profiler.step()
+                    if self._total_steps and self._steps_run >= self._total_steps:
+                        training_completed = True
+                        break
 
-                pbar.update(1)
-                pbar.set_description(
-                    f"{curr_epoch + 1}|{self.global_step}|Loss: {grpo_stats[-1].loss.item():.4f}"
-                )
-
-                if self._steps_run == self._total_steps:
-                    training_completed = True
+                self._epochs_run += 1
+                if (
+                        self._save_every_n_steps is None
+                        and self._epochs_run % self._save_every_n_epochs == 0
+                ):
+                    self.save_checkpoint(curr_epoch)
+                if training_completed:
                     break
 
-            self._epochs_run += 1
-            if self._epochs_run % self._save_every_n_epochs == 0:
-                self.save_checkpoint(curr_epoch)
-            if training_completed:
-                break
-
-        self._profiler.stop()
-
-        # Save final checkpoint if not already saved
-        if not training_completed or self._epochs_run % self._save_every_n_epochs != 0:
-            self.save_checkpoint(self._epochs_run - 1)
+        except KeyboardInterrupt:
+            interrupted = True
+            utils.log_rank_zero(
+                self._logger,
+                "Training interrupted by user. Saving final checkpoint before exit.",
+            )
+        finally:
+            self._profiler.stop()
+            pbar.close()
+            final_epoch = max(self._epochs_run - 1, last_epoch, 0)
+            self.save_checkpoint(final_epoch, is_final=True)
+            if interrupted:
+                return
 
     def log_metrics(
             self, trajectory: GRPOTrajectory, grpo_stats: GRPOStats, **extras
