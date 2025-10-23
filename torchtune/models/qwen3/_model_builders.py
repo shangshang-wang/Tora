@@ -392,7 +392,7 @@ def lora_qwen3_0_6b_base(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -443,7 +443,7 @@ def lora_qwen3_0_6b_base(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
 
@@ -455,7 +455,7 @@ def lora_qwen3_0_6b_instruct(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -509,7 +509,7 @@ def lora_qwen3_0_6b_instruct(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
 
@@ -521,7 +521,7 @@ def lora_qwen3_1_7b_base(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -576,7 +576,7 @@ def lora_qwen3_1_7b_base(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
 
@@ -588,7 +588,7 @@ def lora_qwen3_1_7b_instruct(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -643,7 +643,7 @@ def lora_qwen3_1_7b_instruct(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
 
@@ -655,7 +655,7 @@ def lora_qwen3_4b_base(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -709,7 +709,7 @@ def lora_qwen3_4b_base(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
 
@@ -721,7 +721,7 @@ def lora_qwen3_4b_instruct(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -775,7 +775,7 @@ def lora_qwen3_4b_instruct(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
 
@@ -787,7 +787,7 @@ def lora_qwen3_8b_base(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -840,7 +840,7 @@ def lora_qwen3_8b_base(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
 
@@ -852,7 +852,7 @@ def lora_qwen3_8b_instruct(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -905,7 +905,7 @@ def lora_qwen3_8b_instruct(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
 
@@ -917,7 +917,7 @@ def lora_qwen3_14b_base(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -970,7 +970,7 @@ def lora_qwen3_14b_base(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
 
@@ -982,7 +982,7 @@ def lora_qwen3_14b_instruct(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -1035,7 +1035,7 @@ def lora_qwen3_14b_instruct(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )
 
@@ -1047,7 +1047,7 @@ def lora_qwen3_32b(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -1100,6 +1100,6 @@ def lora_qwen3_32b(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
     )

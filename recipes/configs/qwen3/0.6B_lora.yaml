@@ -13,28 +13,33 @@
 #
 # This config is for fine-tuning on 2+ GPUs.
 
-output_dir: /tmp/torchtune/qwen3_0_6B/lora # /tmp may be deleted by your system. Change it to your preference.
+base_model_dir: ${oc.env:BASE_MODEL_DIR}
+base_output_dir: ${oc.env:BASE_OUTPUT_DIR}
+name: ${oc.env:CONFIG_NAME}
+
+output_dir: ${base_output_dir}/${name}
+base_model_path: ${base_model_dir}/Qwen3-0.6B
 
 # Model arguments
 model:
-  _component_: torchtune.models.qwen3.lora_qwen3_0_6b_instruct
+  _component_: torchtune.models.qwen3.lora_qwen3_0_6b_base
   lora_attn_modules: ['q_proj', 'v_proj', 'output_proj']
   apply_lora_to_mlp: True
-  lora_rank: 32  # higher increases accuracy and memory
-  lora_alpha: 64  # usually alpha=2*rank
+  lora_rank: 1  # higher increases accuracy and memory
+  lora_alpha: 2  # usually alpha=2*rank
   lora_dropout: 0.0
 
 # Tokenizer
 tokenizer:
   _component_: torchtune.models.qwen3.qwen3_tokenizer
-  path: /tmp/Qwen3-0.6B/vocab.json
-  merges_file: /tmp/Qwen3-0.6B/merges.txt
-  max_seq_len: null
+  path: ${base_model_dir}/Qwen3-0.6B/vocab.json
+  merges_file: ${base_model_dir}/Qwen3-0.6B/merges.txt
+  max_seq_len: 2048
 
 # Checkpointer
 checkpointer:
   _component_: torchtune.training.FullModelHFCheckpointer
-  checkpoint_dir: /tmp/Qwen3-0.6B
+  checkpoint_dir: ${base_model_path}
   checkpoint_files: [model.safetensors]
   recipe_checkpoint: null
   output_dir: ${output_dir}
@@ -43,24 +48,33 @@ resume_from_checkpoint: False
 
 # Dataset
 dataset:
-  _component_: torchtune.datasets.alpaca_cleaned_dataset
-  packed: False  # True increases speed
+  _component_: torchtune.datasets.c4_dataset
+  source: allenai/c4         # ignored when explicit_shards=True
+  column: text
+  split: train               # required by JSON builder call
+  add_eos: True
+  packed: False
+  streaming: False           # must be False for StatefulDistributedSampler
+  name: en                   # harmless; not used in explicit path
+  subset_percent: 0.01       # 1% ≈ 11 shards
+  subset_start_shard: 0      # move this to pick a different contiguous block
+  explicit_shards: True      # switch to JSON+data_files path
+
 seed: null
 shuffle: True
 
 # Fine-tuning arguments
 epochs: 1
-max_steps_per_epoch: null
-batch_size: 2
-gradient_accumulation_steps: 8  # Use to increase effective batch size
+max_steps_per_epoch: 10000
+batch_size: 4
+gradient_accumulation_steps: 1  # Use to increase effective batch size
 optimizer:
   _component_: torch.optim.AdamW
   fused: True
-  weight_decay: 0.01
   lr: 1e-4
 lr_scheduler:
   _component_: torchtune.training.lr_schedulers.get_cosine_schedule_with_warmup
-  num_warmup_steps: 100
+  num_warmup_steps: 2000
 optimizer_in_bwd: False  # True saves memory. Requires gradient_accumulation_steps=1
 loss:
   _component_: torchtune.modules.loss.LinearCrossEntropyLoss
@@ -72,13 +86,14 @@ device: cuda
 enable_activation_checkpointing: False  # True reduces memory
 enable_activation_offloading: False  # True reduces memory
 dtype: bf16
-clip_grad_norm: null
+clip_grad_norm: 1.0
 compile: False  # torch.compile the model + loss, True increases speed + decreases memory
 
 # Logging
 metric_logger:
-  _component_: torchtune.training.metric_logging.DiskLogger
-  log_dir: ${output_dir}/logs
+  _component_: torchtune.training.metric_logging.WandBLogger
+#  log_dir: ${output_dir}/logs
+  project: torchtitan_lora_dev
 log_every_n_steps: 1
 log_peak_memory_stats: True
 log_level: INFO  # DEBUG, WARN, etc.
