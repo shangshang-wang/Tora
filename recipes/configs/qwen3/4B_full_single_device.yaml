@@ -50,7 +50,7 @@ checkpointer:
 resume_from_checkpoint: False
 
 # Fine-tuning arguments
-batch_size: 2
+batch_size: 4
 epochs: 1
 optimizer:
   _component_: torch.optim.AdamW
@@ -60,7 +60,7 @@ optimizer_in_bwd: False  # True saves memory. Requires gradient_accumulation_ste
 loss:
   _component_: torchtune.modules.loss.LinearCrossEntropyLoss
 max_steps_per_epoch: null
-gradient_accumulation_steps: 1  # Use to increase effective batch size
+gradient_accumulation_steps: 4  # Use to increase effective batch size
 clip_grad_norm: null
 compile: False  # torch.compile the model + loss, True increases speed + decreases memory
 

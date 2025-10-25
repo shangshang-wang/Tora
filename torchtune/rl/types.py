@@ -26,7 +26,9 @@ class GRPOTrajectory(NamedTuple):
         position_ids (torch.Tensor): Position IDs for input ids-generated responses pairs with shape [B x G, P+L].
         response_padding_masks (torch.Tensor): Padding masks for the truncated and padded generated responses with shape [B x G, L].
         seq_lens (torch.Tensor): Sequence lengths of truncated generated responses.
-        answers (str): list of answers for the generated responses. [B x G]
+        visual_pos_masks (Optional[torch.Tensor]): Visual placeholder masks matching ``query_responses`` length.
+        pixel_values (Optional[torch.Tensor]): Batched image features aligned to ``query_responses`` samples.
+        image_grid_thw (Optional[torch.Tensor]): Grid metadata for the associated ``pixel_values``.
     """
 
     query_responses: torch.Tensor = None  # [B*G, P+L]
@@ -40,6 +42,9 @@ class GRPOTrajectory(NamedTuple):
     position_ids: torch.Tensor = None  # [B*G, P+L]
     response_padding_masks: torch.Tensor = None  # [B*G, L]
     seq_lens: torch.Tensor = None  # [B*G]
+    visual_pos_masks: Optional[torch.Tensor] = None  # [B*G, P+L]
+    pixel_values: Optional[torch.Tensor] = None  # [B*G, num_images, C, H, W]
+    image_grid_thw: Optional[torch.Tensor] = None  # [B*G, num_images, 3]
 
 
 class GRPOStats(NamedTuple):

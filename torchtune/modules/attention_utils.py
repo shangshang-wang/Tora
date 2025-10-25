@@ -204,7 +204,7 @@ def _sdpa_or_flex_attention() -> Callable:
         # shape: [b, 1, s, s]
         if mask is not None:
             mask = mask[:, None, :, :]
-
+        
         # Flash attention from https://pytorch.org/blog/accelerating-large-language-models/
         return nn.functional.scaled_dot_product_attention(
             q, k, v, attn_mask=mask, dropout_p=dropout_p, is_causal=is_causal

@@ -13,7 +13,6 @@ from warnings import warn
 import torch
 from omegaconf import DictConfig, ListConfig
 from torch import nn
-from torch.distributed import destroy_process_group, init_process_group
 from torch.optim import Optimizer
 from torchdata.stateful_dataloader import StatefulDataLoader
 from torchdata.stateful_dataloader.sampler import StatefulDistributedSampler
@@ -24,18 +23,17 @@ from torchtune.rl.generation import generate
 from torchtune.rl.rewards import batched_rewards
 from torchtune.rl.types import GRPOStats, GRPOTrajectory
 from torchtune.modules import local_kv_cache
+from torchtune.modules.peft import get_adapter_params, set_trainable_params
 from torchtune.recipe_interfaces import FTRecipeInterface
 from torchtune.training import disable_dropout, DummyProfiler, PROFILER_KEY
 from torchtune.training.lr_schedulers import get_lr
 from tqdm import tqdm
 
-log = utils.get_logger("DEBUG")
-
 import torch._dynamo.config as dynamo_config
 dynamo_config.recompile_limit = 100
 
 
-class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
+class GRPOFullFinetuneRecipeSingleDevice(FTRecipeInterface):
     def __init__(self, cfg: DictConfig) -> None:
         self._device = utils.get_device(device=cfg.device)
         self._dtype = training.get_dtype(cfg.dtype, device=self._device)
@@ -44,20 +42,17 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         # Logging attributes
         self._log_every_n_steps = cfg.get("log_every_n_steps", 1)
         self._log_peak_memory_stats = cfg.get("log_peak_memory_stats", False)
+        self._logger = utils.get_logger(cfg.log_level)
         if self._log_peak_memory_stats and self._device.type != "cuda":
-            log.info(
+            self._logger.info(
                 "log_peak_memory_stats was set to True, however, training does not use cuda. Setting log_peak_memory_stats=False."
             )
             self._log_peak_memory_stats = False
 
-        # Initialize the distributed environment
-        self.fsdp_cpu_offload = cfg.get("fsdp_cpu_offload", False)
-        self.distributed_backend = training.get_distributed_backend(
-            cfg.device, offload_ops_to_cpu=self.fsdp_cpu_offload
-        )
-        init_process_group(self.distributed_backend)
-        self.world_size, self.rank = utils.get_world_size_and_rank()
-        self._is_rank_zero = self.rank == 0
+        # Single device attributes
+        self.world_size = 1
+        self.rank = 0
+        self._is_rank_zero = True
 
         # Training attributes
         self._resume_from_checkpoint = cfg.resume_from_checkpoint
@@ -126,12 +121,8 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         Setup the recipe. This includes training state (if resume_from_checkpoint is True),
         model, tokenizer, loss, optimizer, lr scheduler, sampler, and dataloader.
         """
-        if self.fsdp_cpu_offload:
-            training.set_torch_num_threads()
-
-        if self._is_rank_zero:
-            self._metric_logger = config.instantiate(cfg.metric_logger)
-            self._metric_logger.log_config(cfg)
+        self._metric_logger = config.instantiate(cfg.metric_logger)
+        self._metric_logger.log_config(cfg)
 
         # Handle the MAIN checkpointer. It's stored in `self` to be used for saving later.
         self._checkpointer = config.instantiate(
@@ -141,36 +132,28 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         checkpoint_dict = self._checkpointer.load_checkpoint()
 
         # Handle the REFERENCE checkpointer. It's instantiated locally just to load weights.
-        # This prevents it from overwriting self._checkpointer.
         ref_checkpointer_instance = config.instantiate(
             cfg.ref_checkpointer,
-            resume_from_checkpoint=self._resume_from_checkpoint,  # Should be False for ref model
+            resume_from_checkpoint=self._resume_from_checkpoint,
         )
         ref_checkpoint_dict = ref_checkpointer_instance.load_checkpoint()
 
         if self._resume_from_checkpoint:
             self._update_recipe_state(checkpoint_dict)
+
         self._model = self._setup_model(
             cfg_model=cfg.model,
             enable_activation_checkpointing=self._enable_activation_checkpointing,
-            custom_sharded_layers=cfg.get("custom_sharded_layers", None),
-            fsdp_cpu_offload=self.fsdp_cpu_offload,
             model_sd=checkpoint_dict[training.MODEL_KEY],
-            reshard_after_forward=False,
         )
-        # Setup reference model
         self._ref_model = self._setup_model(
             cfg_model=cfg.model,
             enable_activation_checkpointing=self._enable_activation_checkpointing,
-            custom_sharded_layers=cfg.get("custom_sharded_layers", None),
-            fsdp_cpu_offload=self.fsdp_cpu_offload,
             model_sd=ref_checkpoint_dict[training.MODEL_KEY],
             eval_mode=True,
-            reshard_after_forward=True,
         )
-        torch.distributed.barrier()
 
-        # Utilize the same tokenizer for both models (hack)
+        # Utilize the same tokenizer for both models
         self._tokenizer = config.instantiate(cfg.tokenizer)
 
         self._optimizer = self._setup_optimizer(
@@ -182,13 +165,13 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
             ),
         )
 
-        # initialize loss
+        # Initialize loss
         self._loss_fn = config.instantiate(cfg.loss)
         if self._compile:
-            training.compile_loss(self._loss_fn, dynamic=True, verbose=self._is_rank_zero)
+            training.compile_loss(
+                self._loss_fn, dynamic=True, verbose=self._is_rank_zero
+            )
 
-        # sampler and dataloader depend on the tokenizer and loss_fn and should be
-        # setup after both of these are initialized
         collate_name = cfg.get(
             "collate_fn", "torchtune.rl.data.padded_collate_rl"
         )
@@ -204,25 +187,16 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
             ),
         )
 
-        # Finally update the recipe state which can only be correctly set after all of the
-        # other components have been initialized and updated.
-        #
-        # Number of training steps in each epoch depends on the number of batches produced
-        # by the dataloader.
-        # This value is used for logging and tracking
-        # training state. The computation should happen after the dataloader has been setup
         self._steps_per_epoch = len(self._dataloader)
         self.global_step = self._epochs_run * self._steps_per_epoch
 
-        # Setup lr scheduler
         self._lr_scheduler = self._setup_lr_scheduler(
             cfg_lr_scheduler=cfg.get("lr_scheduler", None),
             num_training_steps=self.total_epochs * self._steps_per_epoch,
             last_epoch=self.global_step - 1,
         )
 
-        # Set up profiler, returns DummyProfiler (nullcontext object with no-op `step` method)
-        # if cfg is missing profiler key or if `cfg.profiler.enabled = False`
+        # Set up profiler
         self._profiler = self._setup_profiler(cfg.get(PROFILER_KEY, None))
 
         # RL params
@@ -239,15 +213,19 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
 
         # Parse reward function names from the config for named logging
         self.reward_names = []
-        if "reward_functions" in cfg and isinstance(cfg.reward_functions, (ListConfig, list)):
+        if "reward_functions" in cfg and isinstance(
+            cfg.reward_functions, (ListConfig, list)
+        ):
             for rf_cfg in cfg.reward_functions:
-                # Extracts the class name, e.g., "FormattedMathCorrectnessReward"
                 component_path = rf_cfg.get("_component_", "")
                 if component_path:
-                    class_name = component_path.split('.')[-1]
+                    class_name = component_path.split(".")[-1]
                     self.reward_names.append(class_name)
 
-            utils.log_rank_zero(log, f"Found reward names for logging: {self.reward_names}")
+            if self.reward_names:
+                self._logger.info(
+                    f"Found reward names for logging: {self.reward_names}"
+                )
 
         if cfg.get("stop_token_ids", False):
             stop_token_ids = cfg.stop_token_ids
@@ -286,7 +264,7 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         """
         if cfg_lr_scheduler is None:
             if self._is_rank_zero:
-                log.info(
+                self._logger.info(
                     "No learning rate scheduler configured. Using constant learning rate."
                 )
             return None
@@ -302,7 +280,7 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         )
 
         if self._is_rank_zero:
-            log.info("Learning rate scheduler is initialized.")
+            self._logger.info("Learning rate scheduler is initialized.")
 
         return lr_scheduler
 
@@ -327,9 +305,7 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
 
         profiler, profiler_cfg = config.instantiate(cfg_profiler)
 
-        utils.log_rank_zero(
-            log, f" Profiler config after instantiation: {profiler_cfg}"
-        )
+        self._logger.debug(f"Profiler config after instantiation: {profiler_cfg}")
         if self._is_rank_zero:
             self.profiler_profile_memory = profiler_cfg.get("profile_memory", False)
             if profiler_cfg["enabled"]:
@@ -344,32 +320,19 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         self,
         cfg_model: DictConfig,
         enable_activation_checkpointing: bool,
-        fsdp_cpu_offload: bool,
         model_sd: dict[str, Any],
-        custom_sharded_layers: Optional[list[str]] = None,
         eval_mode: bool = False,
-        reshard_after_forward: bool = True,
-    ) -> tuple[nn.Module, nn.Module]:
+    ) -> nn.Module:
         """
-        Model initialization has some important considerations:
-           a. To minimize GPU peak memory, we initialize the model on meta device with
-              the right dtype
-           b. All ranks calls ``load_state_dict`` without peaking CPU RAMs since
-              full state dicts are loaded with ``torch.load(mmap=True)``
+        Initialize and load a model on a single device.
         """
-        utils.log_rank_zero(
-            log,
-            "FSDP is enabled. Instantiating model and loading checkpoint on Rank 0 ...",
-        )
         init_start = time.perf_counter()
 
-        with training.set_default_dtype(self._dtype), torch.device("meta"):
+        with training.set_default_dtype(self._dtype), self._device:
             model = config.instantiate(cfg_model)
-
-        if eval_mode:
-            model.eval()
-            for p in model.parameters():
-                p.requires_grad = False
+            for module in model.modules():
+                if hasattr(module, "rope_init"):
+                    module.rope_init()
 
         if self._compile:
             training.compile_model(model, dynamic=True, verbose=self._is_rank_zero)
@@ -378,53 +341,57 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
             training.set_activation_checkpointing(
                 model, auto_wrap_policy={modules.TransformerSelfAttentionLayer}
             )
-
-        # For FSDP sharding
-        fsdp_shard_conditions = [
-            partial(
-                training.get_shard_conditions,
-                names_to_match=custom_sharded_layers,
+            
+        incompatible_keys = model.load_state_dict(model_sd, strict=False)
+        missing_keys = getattr(incompatible_keys, "missing_keys", [])
+        unexpected_keys = getattr(incompatible_keys, "unexpected_keys", [])
+        if unexpected_keys:
+            raise RuntimeError(
+                f"Unexpected keys encountered while loading checkpoint: {unexpected_keys}"
             )
+
+        adapter_missing_keys = [
+            k for k in missing_keys if "lora" in k or "magnitude" in k
         ]
+        non_adapter_missing_keys = [
+            k for k in missing_keys if k not in adapter_missing_keys
+        ]
+        if non_adapter_missing_keys:
+            self._logger.warning(
+                "Missing keys while loading checkpoint: %s", non_adapter_missing_keys
+            )
+        if adapter_missing_keys:
+            self._logger.debug(
+                "LoRA adapter keys missing from checkpoint (expected when initializing new adapters): %s",
+                adapter_missing_keys,
+            )
 
-        # Policy doesn't reshard after forward for faster generation.
-        # Reference net reshards after forward because it never calls .backward()
-        # See: https://github.com/pytorch/torchtune/pull/2326/#issuecomment-2654684159
-        training.shard_model(
-            model=model,
-            shard_conditions=fsdp_shard_conditions,
-            cpu_offload=fsdp_cpu_offload,
-            reshard_after_forward=reshard_after_forward,
+        adapter_params = get_adapter_params(model)
+        if adapter_params and not eval_mode:
+            set_trainable_params(model, adapter_params)
+            self._logger.info(
+                "Detected %d adapter parameter groups; freezing base model weights.",
+                len(adapter_params),
+            )
+
+        training.validate_expected_param_dtype(
+            model.named_parameters(), dtype=self._dtype
         )
-
-        with training.set_default_dtype(self._dtype), self._device:
-            for m in model.modules():
-                # RoPE is not covered in state dict
-                if hasattr(m, "rope_init"):
-                    m.rope_init()
-
-        # This method will convert the full model state dict into a sharded state
-        # dict and load into the model
-        training.load_from_full_model_state_dict(
-            model,
-            model_sd,
-            self._device,
-            strict=True,
-            cpu_offload=fsdp_cpu_offload,
-        )
-
-        # Ensure no params and buffers are on meta device
-        training.validate_no_params_on_meta_device(model)
-        utils.log_rank_zero(
-            log,
-            f"Instantiating model and loading checkpoint took {time.perf_counter() - init_start:.2f} secs",
-        )
-        if self._is_rank_zero:
-            memory_stats = training.get_memory_stats(device=self._device)
-            training.log_memory_stats(memory_stats)
 
         disable_dropout(model)
 
+        if eval_mode:
+            model.eval()
+            for param in model.parameters():
+                param.requires_grad = False
+
+        if self._device.type != "cpu" and self._is_rank_zero:
+            memory_stats = training.get_memory_stats(device=self._device)
+            training.log_memory_stats(memory_stats)
+
+        self._logger.info(
+            f"Instantiating model and loading checkpoint took {time.perf_counter() - init_start:.2f} secs"
+        )
         return model
 
     def _setup_optimizer(
@@ -434,13 +401,8 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
     ) -> Optional[Optimizer]:
         optimizer = config.instantiate(cfg_optimizer, self._model.parameters())
         if opt_state_dict:
-            training.load_from_full_optimizer_state_dict(
-                self._model,
-                optimizer,
-                opt_state_dict,
-                self._device,
-            )
-        utils.log_rank_zero(log, "Optimizer is initialized.")
+            optimizer.load_state_dict(opt_state_dict)
+        self._logger.info("Optimizer is initialized.")
         return optimizer
 
     def _setup_data(
@@ -515,37 +477,26 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
 
         intermediate_checkpoint = epoch + 1 < self.total_epochs
 
-        utils.log_rank_zero(
-            log,
-            "Saving checkpoint. This may take some time. Retrieving full model state dict...",
+        self._logger.info(
+            "Saving checkpoint. This may take some time. Retrieving full model state dict..."
         )
         start = time.perf_counter()
 
-        # To prevent GPU memory from spiking during checkpoint save,
-        # we consolidate the full model and optim state dicts on CPU for rank 0
-        cpu_state_dict = training.gather_cpu_state_dict(
-            self._model,
-            self._is_rank_zero,
-            device=self._device,
-        )
+        cpu_state_dict = {
+            k: v.detach().cpu() if isinstance(v, torch.Tensor) else v
+            for k, v in self._model.state_dict().items()
+        }
 
-        utils.log_rank_zero(
-            log,
-            f"Getting full model state dict took {time.perf_counter() - start:.2f} secs",
+        self._logger.info(
+            f"Getting full model state dict took {time.perf_counter() - start:.2f} secs"
         )
 
         if intermediate_checkpoint:
             start = time.perf_counter()
-            utils.log_rank_zero(log, "Getting optimizer state dict...")
-            opt_state_dict = training.get_full_optimizer_state_dict(
-                self._model,
-                self._optimizer,
-                self._is_rank_zero,
-                device=self._device,
-            )
-            utils.log_rank_zero(
-                log,
-                f"Getting optimizer state dict took {time.perf_counter() - start:.2f} secs",
+            self._logger.info("Getting optimizer state dict...")
+            opt_state_dict = self._optimizer.state_dict()
+            self._logger.info(
+                f"Getting optimizer state dict took {time.perf_counter() - start:.2f} secs"
             )
         else:
             opt_state_dict = None
@@ -553,35 +504,38 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         # Now that we have the model and opt state dict, create the actual checkpoint dict
         # to be sent to the checkpointer and ultimately written to file
 
-        if self._is_rank_zero:
-            start = time.perf_counter()
-            checkpoint_dict.update({training.MODEL_KEY: cpu_state_dict})
+        start = time.perf_counter()
+        checkpoint_dict.update({training.MODEL_KEY: cpu_state_dict})
 
-            # if training is in-progress, checkpoint the optimizer state and recipe state
-            # as well.
-            if intermediate_checkpoint:
-                checkpoint_dict.update(
-                    {
-                        training.OPT_KEY: opt_state_dict,
-                        training.SEED_KEY: self.seed,
-                        training.EPOCHS_KEY: self._epochs_run,
-                        training.TOTAL_EPOCHS_KEY: self.total_epochs,
-                        training.RNG_KEY: self._rng.get_state(),
-                        training.DATALOADER_KEY: self._dataloader.state_dict(),
-                    }
-                )
-
-            self._checkpointer.save_checkpoint(
-                checkpoint_dict,
-                epoch=epoch,
-                intermediate_checkpoint=intermediate_checkpoint,
+        if intermediate_checkpoint:
+            checkpoint_dict.update(
+                {
+                    training.OPT_KEY: opt_state_dict,
+                    training.SEED_KEY: self.seed,
+                    training.EPOCHS_KEY: self._epochs_run,
+                    training.TOTAL_EPOCHS_KEY: self.total_epochs,
+                    training.RNG_KEY: self._rng.get_state(),
+                    training.DATALOADER_KEY: self._dataloader.state_dict(),
+                }
             )
-            log.info(f"Saving checkpoint took {time.perf_counter() - start:.2f} secs")
 
-        torch.distributed.barrier()
+        self._checkpointer.save_checkpoint(
+            checkpoint_dict,
+            epoch=epoch,
+            intermediate_checkpoint=intermediate_checkpoint,
+        )
+        self._logger.info(
+            f"Saving checkpoint took {time.perf_counter() - start:.2f} secs"
+        )
 
     def generate_trajectory(
-        self, input_ids: torch.Tensor, answers: list[str]
+        self,
+        input_ids: torch.Tensor,
+        answers: list[str],
+        *,
+        visual_pos_masks: Optional[torch.Tensor] = None,
+        pixel_values_images: Optional[torch.Tensor] = None,
+        image_grid_thw: Optional[torch.Tensor] = None,
     ) -> GRPOTrajectory:
         """
         Generates a trajectory given the current policy model, the reference policy model, the reward function,
@@ -598,6 +552,12 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         Args:
             input_ids (torch.Tensor): tensor of input token IDs with shape [b, seq_length]
             answers (list[str]): list of answers corresponding to the input_ids
+            visual_pos_masks (Optional[torch.Tensor]): boolean masks indicating which token
+                positions should be replaced with visual embeddings. Shape [b, seq_length].
+            pixel_values_images (Optional[torch.Tensor]): stacked image pixels produced by the
+                Qwen3-VL processor. Shape [b, num_images, C, H, W].
+            image_grid_thw (Optional[torch.Tensor]): grid metadata for ``pixel_values_images`` with
+                shape [b, num_images, 3].
 
         Returns:
             Trajectory: An instance of :class:`~torchtune.rlhf.GRPOTrajectory` comprising
@@ -606,10 +566,44 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         batch_size, context_length = input_ids.shape
         grpo_size = self.grpo_samples
 
-        batch_input_ids = input_ids[:, None, :].expand(-1, grpo_size, -1)  # [B, G, L]
+        def _expand_optional(tensor: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
+            if tensor is None:
+                return None
+            return tensor.repeat_interleave(grpo_size, dim=0)
+
+        batch_input_ids = input_ids[:, None, :].expand(-1, grpo_size, -1)
         batch_input_ids = batch_input_ids.reshape(batch_size * grpo_size, -1)
 
+        expanded_visual_masks = _expand_optional(visual_pos_masks)
+        expanded_pixel_values = _expand_optional(pixel_values_images)
+        expanded_image_grid = _expand_optional(image_grid_thw)
+
         max_total_len = context_length + self._max_generated_tokens
+
+        model_prompt_kwargs: dict[str, torch.Tensor] = {}
+        model_logits_kwargs: dict[str, torch.Tensor] = {}
+
+        if expanded_pixel_values is not None:
+            model_prompt_kwargs["pixel_values"] = expanded_pixel_values
+            model_logits_kwargs["pixel_values"] = expanded_pixel_values
+
+        if expanded_image_grid is not None:
+            model_prompt_kwargs["image_grid_thw"] = expanded_image_grid
+            model_logits_kwargs["image_grid_thw"] = expanded_image_grid
+
+        visual_masks_for_logits: Optional[torch.Tensor] = None
+        if expanded_visual_masks is not None:
+            model_prompt_kwargs["visual_pos_masks"] = expanded_visual_masks
+            pad = max_total_len - expanded_visual_masks.shape[-1]
+            if pad > 0:
+                visual_masks_for_logits = torch.nn.functional.pad(
+                    expanded_visual_masks,
+                    (0, pad),
+                    value=False,
+                )
+            else:
+                visual_masks_for_logits = expanded_visual_masks
+            model_logits_kwargs["visual_pos_masks"] = visual_masks_for_logits
 
         # step 1: generate responses, and logits corresponding to the responses using the current policy
         with local_kv_cache(
@@ -618,7 +612,7 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
             device=self._device,
             dtype=self._dtype,
             decoder_max_seq_len=max_total_len,
-        ):
+        ):  
             query_responses, _ = generate(  # [B x G, L], [B x G, L, V]
                 model=self._model,
                 prompt=batch_input_ids,
@@ -629,6 +623,7 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
                 rng=self._rng,
                 stop_tokens=self._tokenizer.stop_tokens,
                 return_logits=False,
+                model_inputs=model_prompt_kwargs if model_prompt_kwargs else None,
             )
 
         # Truncate if longer than expected and Pad if shorter
@@ -654,7 +649,12 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         del query_response_padding_masks
 
         # step 2. estimate logprobs of the responses using the current policy
-        logits = self._model(query_responses, input_pos=position_ids, mask=masks)
+        logits = self._model(
+            query_responses,
+            input_pos=position_ids,
+            mask=masks,
+            **model_logits_kwargs,
+        )
         logits = logits[:, context_length - 1 :]
         logprobs = rlhf.batched_logits_to_logprobs(logits, responses, self._temperature)
         del logits
@@ -662,7 +662,10 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
 
         # step 2.1 estimate logprobs of the responses using the reference policy
         ref_logits = self._ref_model(
-            query_responses, input_pos=position_ids, mask=masks
+            query_responses,
+            input_pos=position_ids,
+            mask=masks,
+            **model_logits_kwargs,
         )
         ref_logits = rlhf.truncate_sequence_for_logprobs(ref_logits, context_length)
         ref_logprobs = rlhf.batched_logits_to_logprobs(
@@ -720,10 +723,19 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
             position_ids=position_ids,
             response_padding_masks=response_padding_masks,
             seq_lens=training.get_unmasked_sequence_lengths(response_padding_masks),
+            visual_pos_masks=visual_masks_for_logits,
+            pixel_values=expanded_pixel_values,
+            image_grid_thw=expanded_image_grid,
         )
 
     def generate_trajectory_batched(
-        self, input_ids: torch.Tensor, answers: list[str]
+        self,
+        input_ids: torch.Tensor,
+        answers: list[str],
+        *,
+        visual_pos_masks: Optional[torch.Tensor] = None,
+        pixel_values_images: Optional[torch.Tensor] = None,
+        image_grid_thw: Optional[torch.Tensor] = None,
     ) -> GRPOTrajectory:
         """
         Generates a ``self.batch_size`` batch of trajectories using `self._forward_batch_size` batch sizes.
@@ -746,9 +758,36 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
                 batch_answers = answers[
                     batch_start : batch_start + self._forward_batch_size
                 ]
+                batch_visual_masks = (
+                    visual_pos_masks[
+                        batch_start : batch_start + self._forward_batch_size
+                    ]
+                    if visual_pos_masks is not None
+                    else None
+                )
+                batch_pixel_values = (
+                    pixel_values_images[
+                        batch_start : batch_start + self._forward_batch_size
+                    ]
+                    if pixel_values_images is not None
+                    else None
+                )
+                batch_image_grid = (
+                    image_grid_thw[
+                        batch_start : batch_start + self._forward_batch_size
+                    ]
+                    if image_grid_thw is not None
+                    else None
+                )
                 torch.cuda.empty_cache()
                 trajectories.append(
-                    self.generate_trajectory(batch_input_ids, batch_answers)
+                    self.generate_trajectory(
+                        batch_input_ids,
+                        batch_answers,
+                        visual_pos_masks=batch_visual_masks,
+                        pixel_values_images=batch_pixel_values,
+                        image_grid_thw=batch_image_grid,
+                    )
                 )
                 torch.cuda.empty_cache()
         return self._concat_trajectories(trajectories)
@@ -792,7 +831,7 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
             context_length (int): input ids sequence length
 
         Returns:
-            GRPOStats: An instance of :class:`~torchtune.rlhf.PPOStats`, a NamedTuple containing:
+            GRPOStats: An instance of :class:`~torchtune.rl.types.GRPOStats`, a NamedTuple containing:
                - loss (torch.Tensor): The total PPO loss.
                - ratios (torch.Tensor): The ratio between the current and old policy probabilities.
                - clipfrac (torch.Tensor): The fraction of ratios that were clipped.
@@ -889,12 +928,28 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
 
                 tokens = batch["tokens"]  # type: ignore
                 answers = batch["answers"]  # type: ignore
+
+                visual_pos_masks = batch.get("visual_pos_masks")
+                pixel_values_images = batch.get("pixel_values_images")
+                image_grid_thw = batch.get("image_grid_thw")
+
                 tokens = tokens.to(self._device)  # [B, P]
+                if visual_pos_masks is not None:
+                    visual_pos_masks = visual_pos_masks.to(self._device)
+                if pixel_values_images is not None:
+                    pixel_values_images = pixel_values_images.to(self._device)
+                if image_grid_thw is not None:
+                    image_grid_thw = image_grid_thw.to(self._device)
 
                 _, context_length = tokens.shape
 
-                trajectory = self.generate_trajectory_batched(tokens, answers)
-                torch.distributed.barrier()
+                trajectory = self.generate_trajectory_batched(
+                    tokens,
+                    answers,
+                    visual_pos_masks=visual_pos_masks,
+                    pixel_values_images=pixel_values_images,
+                    image_grid_thw=image_grid_thw,
+                )
 
                 grpo_stats: list[GRPOStats] = []
                 for _ in range(self._ppo_epochs):
@@ -907,10 +962,8 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
                             self._model.parameters(),
                             max_norm=float(self._clip_grad_norm),
                         )
-                    torch.distributed.barrier()
                     self._optimizer.step()
                     self._optimizer.zero_grad(set_to_none=True)
-                    torch.distributed.barrier()
 
                     self.global_step += 1
 
@@ -967,45 +1020,37 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         Log metrics and statistics for the current step to the metric logger.
         """
         rewards = trajectory.rewards.mean()
-        torch.distributed.reduce(rewards, dst=0, op=torch.distributed.ReduceOp.AVG)
-
         successes = trajectory.successes.mean()
-        torch.distributed.reduce(successes, dst=0, op=torch.distributed.ReduceOp.AVG)
-
         mean_reward_components = trajectory.reward_components.mean(dim=0)
-        torch.distributed.reduce(mean_reward_components, dst=0, op=torch.distributed.ReduceOp.AVG)
 
         log_dict = {
-            "rewards": rewards,
-            "successes": successes,
-            "num_stop_tokens": trajectory.response_padding_masks.any(-1).sum(),
-            "loss": grpo_stats.loss.mean(),
-            "policy_loss": grpo_stats.policy_loss.mean(),
-            "kl_loss": grpo_stats.kl_loss.mean(),
-            "clipfrac": grpo_stats.clipfrac.mean(),
-            "ratios": grpo_stats.ratios.mean(),
-            "approx_policy_kl": grpo_stats.approx_policy_kls.mean(),
-            "response_lengths": trajectory.seq_lens.float().mean(),
+            "rewards": rewards.item(),
+            "successes": successes.item(),
+            "num_stop_tokens": trajectory.response_padding_masks.any(-1).sum().item(),
+            "loss": grpo_stats.loss.mean().item(),
+            "policy_loss": grpo_stats.policy_loss.mean().item(),
+            "kl_loss": grpo_stats.kl_loss.mean().item(),
+            "clipfrac": grpo_stats.clipfrac.mean().item(),
+            "ratios": grpo_stats.ratios.mean().item(),
+            "approx_policy_kl": grpo_stats.approx_policy_kls.mean().item(),
+            "response_lengths": trajectory.seq_lens.float().mean().item(),
             **extras,
         }
 
         if self._device.type == "cuda" and self._log_peak_memory_stats:
             log_dict.update(training.get_memory_stats(device=self._device))
-        if self._is_rank_zero:
-            if self.reward_names and len(self.reward_names) == len(mean_reward_components):
-                for name, reward_comp in zip(self.reward_names, mean_reward_components):
-                    # Using a "reward/" prefix groups these together in the wandb UI
-                    log_dict[f"reward/{name}"] = reward_comp.item()
-            else:
-                for i, reward_comp in enumerate(mean_reward_components):
-                    log_dict[f"reward/component_{i}"] = reward_comp.item()
+        if self.reward_names and len(self.reward_names) == len(mean_reward_components):
+            for name, reward_comp in zip(self.reward_names, mean_reward_components):
+                # Using a "reward/" prefix groups these together in the wandb UI
+                log_dict[f"reward/{name}"] = reward_comp.item()
+        else:
+            for i, reward_comp in enumerate(mean_reward_components):
+                log_dict[f"reward/component_{i}"] = reward_comp.item()
 
-            self._metric_logger.log_dict(log_dict, step=self.global_step)
+        self._metric_logger.log_dict(log_dict, step=self.global_step)
 
     def cleanup(self) -> None:
-        if self._is_rank_zero:
-            self._metric_logger.close()
-        destroy_process_group()
+        self._metric_logger.close()
 
     def cleanup_after_step(
         self,
@@ -1032,8 +1077,8 @@ def recipe_main(cfg: DictConfig) -> None:
         - Overwritten by arguments from the command-line
     """
 
-    recipe = GRPOFullFinetuneRecipeDistributed(cfg=cfg)
-    config.log_config(recipe_name="GRPOFullFinetuneRecipeDistributed", cfg=cfg)
+    recipe = GRPOFullFinetuneRecipeSingleDevice(cfg=cfg)
+    config.log_config(recipe_name="GRPOFullFinetuneRecipeSingleDevice", cfg=cfg)
     recipe.setup(cfg=cfg)
     recipe.train()
     recipe.cleanup()

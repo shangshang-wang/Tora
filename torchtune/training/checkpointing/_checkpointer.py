@@ -657,6 +657,17 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 dim=self._config["hidden_size"],
                 tie_word_embeddings=self._config["tie_word_embeddings"],
             )
+        elif self._model_type == ModelType.QWEN3_VL:
+            from torchtune.models.qwen3_vl._convert_weights import qwen3_vl_hf_to_tune
+
+            text_config = self._config.get("text_config", self._config)
+            tie_embeddings = text_config.get(
+                "tie_word_embeddings", self._config.get("tie_word_embeddings", False)
+            )
+            converted_state_dict[training.MODEL_KEY] = qwen3_vl_hf_to_tune(
+                merged_state_dict,
+                tie_word_embeddings=tie_embeddings,
+            )
         elif self._model_type == ModelType.LLAMA3_VISION:
             from torchtune.models.llama3_2_vision._convert_weights import (
                 llama3_vision_hf_to_tune,
@@ -825,6 +836,17 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                     num_kv_heads=self._config["num_key_value_heads"],
                     dim=self._config["hidden_size"],
                     tie_word_embeddings=self._config["tie_word_embeddings"],
+                )
+            elif self._model_type == ModelType.QWEN3_VL:
+                from torchtune.models.qwen3_vl._convert_weights import qwen3_vl_tune_to_hf
+
+                text_config = self._config.get("text_config", self._config)
+                tie_embeddings = text_config.get(
+                    "tie_word_embeddings", self._config.get("tie_word_embeddings", False)
+                )
+                state_dict[training.MODEL_KEY] = qwen3_vl_tune_to_hf(
+                    state_dict[training.MODEL_KEY],
+                    tie_word_embeddings=tie_embeddings,
                 )
             elif self._model_type == ModelType.LLAMA3_VISION:
                 from torchtune.models.llama3_2_vision._convert_weights import (
