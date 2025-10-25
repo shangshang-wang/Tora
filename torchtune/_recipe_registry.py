@@ -42,6 +42,21 @@ _ALL_RECIPES = [
         supports_distributed=True,
     ),
     Recipe(
+        name="full_grpo_single_device",
+        file_path="full_grpo_single_device.py",
+        configs=[
+            Config(
+                name="qwen3_vl/4b_full_grpo_single_device",
+                file_path="qwen3_vl/4b_full_grpo_single_device.yaml",
+            ),
+            Config(
+                name="qwen3_vl/4b_lora_grpo_single_device",
+                file_path="qwen3_vl/4b_lora_grpo_single_device.yaml",
+            ),
+        ],
+        supports_distributed=False,
+    ),
+    Recipe(
         name="lora_grpo_distributed",
         file_path="lora_grpo_distributed.py",
         configs=[
@@ -150,6 +165,10 @@ _ALL_RECIPES = [
             Config(
                 name="llama3_2_vision/11B_full_single_device",
                 file_path="llama3_2_vision/11B_full_single_device.yaml",
+            ),
+            Config(
+                name="qwen3_vl/4b_full_single_device",
+                file_path="qwen3_vl/4b_full_single_device.yaml",
             ),
             Config(
                 name="qwen3/0.6B_full_single_device",

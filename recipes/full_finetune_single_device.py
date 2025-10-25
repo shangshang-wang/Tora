@@ -551,6 +551,7 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
     def _loss_step(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
         # Shape [b, s], needed for the loss not the model
         labels = batch.pop("labels")
+        batch.pop("mask", None) # fix later: ambiguous naming of mask when introducing visual content
 
         with self.activations_handling_ctx:
             outputs = self._model(**batch)

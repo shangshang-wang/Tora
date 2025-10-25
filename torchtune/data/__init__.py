@@ -9,6 +9,7 @@ from torchtune.data._collate import (
     padded_collate,
     padded_collate_dpo,
     padded_collate_packed,
+    padded_collate_qwen_vision,
     padded_collate_sft,
     padded_collate_tiled_images_and_mask,
 )
@@ -59,5 +60,6 @@ __all__ = [
     "padded_collate",
     "padded_collate_tiled_images_and_mask",
     "padded_collate_packed",
+    "padded_collate_qwen_vision",
     "load_image",
 ]

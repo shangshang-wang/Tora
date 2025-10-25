@@ -559,6 +559,124 @@ def padded_collate_tiled_images_and_mask(
     return batch_dict
 
 
+def padded_collate_qwen_vision(
+    batch: list[dict[str, Any]],
+    padding_idx: int = 0,
+    ignore_idx: int = CROSS_ENTROPY_IGNORE_IDX,
+    pad_to_multiple_of: int = 1,
+) -> dict[str, torch.Tensor]:
+    """
+    Collate text + image features for Qwen vision-language models.
+
+    Each sample is expected to contain:
+        - ``tokens``: token ids
+        - ``labels``: shifted token ids for loss
+        - ``mask``: bool mask indicating which tokens are ignored for loss
+        - ``visual_pos_masks``: bool mask identifying visual placeholder tokens
+        - ``pixel_values_images``: vision patches produced by the Qwen processor
+        - ``image_grid_thw``: per-image grid metadata (t, h, w)
+
+    The processor output is concatenated across the batch in the same order that
+    visual placeholders were produced, enabling the model to inject the vision
+    embeddings with ``visual_pos_masks``.
+    """
+
+    text_only = [{"tokens": sample["tokens"], "labels": sample["labels"]} for sample in batch]
+    collated_text = padded_collate_sft(
+        text_only,
+        padding_idx=padding_idx,
+        ignore_idx=ignore_idx,
+        pad_to_multiple_of=pad_to_multiple_of,
+    )
+
+    tokens = collated_text["tokens"]
+    labels = collated_text["labels"]
+    target_seq_len = tokens.shape[1]
+
+    def _collate_bool_field(key: str, pad_value: bool) -> torch.Tensor:
+        stacked: list[torch.Tensor] = []
+        for sample in batch:
+            seq = sample.get(key, [])
+            if isinstance(seq, torch.Tensor):
+                seq_tensor = seq.to(dtype=torch.bool).reshape(-1)
+            else:
+                seq_tensor = torch.as_tensor(seq, dtype=torch.bool).reshape(-1)
+            seq_len = seq_tensor.numel()
+            if seq_len > target_seq_len:
+                raise ValueError(
+                    f"{key} sequence length {seq_len} exceeds padded token length {target_seq_len}."
+                )
+            padded = torch.full((target_seq_len,), pad_value, dtype=torch.bool)
+            padded[:seq_len] = seq_tensor
+            stacked.append(padded)
+        return torch.stack(stacked, dim=0)
+
+    batch_dict: dict[str, torch.Tensor] = {"tokens": tokens.long(), "labels": labels.long()}
+
+    if any("mask" in sample for sample in batch):
+        batch_dict["mask"] = _collate_bool_field("mask", pad_value=True)
+
+    if any("visual_pos_masks" in sample for sample in batch):
+        batch_dict["visual_pos_masks"] = _collate_bool_field("visual_pos_masks", pad_value=False)
+
+    image_pixels: list[torch.Tensor] = []
+    image_grids: list[torch.Tensor] = []
+
+    def _gather_vision_chunks(
+        sample_pixels_key: str,
+        sample_grid_key: str,
+        pixel_acc: list[torch.Tensor],
+        grid_acc: list[torch.Tensor],
+    ) -> None:
+        for sample in batch:
+            pixel_values = sample.get(sample_pixels_key)
+            grid_thw = sample.get(sample_grid_key)
+            if pixel_values is None or grid_thw is None:
+                continue
+
+            pixel_tensor = (
+                pixel_values
+                if isinstance(pixel_values, torch.Tensor)
+                else torch.as_tensor(pixel_values)
+            )
+            grid_tensor = (
+                grid_thw if isinstance(grid_thw, torch.Tensor) else torch.as_tensor(grid_thw)
+            )
+            if grid_tensor.ndim == 1:
+                grid_tensor = grid_tensor.unsqueeze(0)
+
+            pixel_acc.append(pixel_tensor)
+            grid_acc.append(grid_tensor)
+
+    _gather_vision_chunks(
+        "pixel_values_images",
+        "image_grid_thw",
+        image_pixels,
+        image_grids,
+    )
+
+    if image_pixels:
+        batch_dict["pixel_values"] = torch.cat(image_pixels, dim=0)
+        batch_dict["image_grid_thw"] = torch.cat(image_grids, dim=0)
+
+    video_pixels: list[torch.Tensor] = []
+    video_grids: list[torch.Tensor] = []
+
+    _gather_vision_chunks(
+        "pixel_values_videos",
+        "video_grid_thw",
+        video_pixels,
+        video_grids,
+    )
+
+    if video_pixels:
+        raise NotImplementedError(
+            "padded_collate_qwen_vision currently supports image inputs only; videos were provided."
+        )
+
+    return batch_dict
+
+
 def padded_collate_packed(
     batch: list[PACK_TYPE],
 ) -> dict[str, torch.Tensor]:

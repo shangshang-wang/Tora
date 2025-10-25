@@ -992,7 +992,33 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
                     self.generate_trajectory(batch_input_ids, batch_answers)
                 )
                 torch.cuda.empty_cache()
-        return concat_grpo_trajectories(trajectories)
+        return self._concat_trajectories(trajectories)
+
+    def _concat_trajectories(
+            self, trajectories: list[GRPOTrajectory]
+    ) -> GRPOTrajectory:
+        def _concat(attr: str) -> Optional[torch.Tensor]:
+            values = [getattr(traj, attr) for traj in trajectories]
+            if all(value is None for value in values):
+                return None
+            return torch.cat(values, dim=0)
+
+        return GRPOTrajectory(
+            query_responses=_concat("query_responses"),
+            logprobs=_concat("logprobs"),
+            ref_logprobs=_concat("ref_logprobs"),
+            rewards=_concat("rewards"),
+            reward_components=_concat("reward_components"),
+            successes=_concat("successes"),
+            advantages=_concat("advantages"),
+            masks=_concat("masks"),
+            position_ids=_concat("position_ids"),
+            response_padding_masks=_concat("response_padding_masks"),
+            seq_lens=_concat("seq_lens"),
+            visual_pos_masks=_concat("visual_pos_masks"),
+            pixel_values=_concat("pixel_values"),
+            image_grid_thw=_concat("image_grid_thw"),
+        )
 
     def grpo_step(
             self,
@@ -1012,11 +1038,20 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
         torch.cuda.empty_cache()
 
         # estimate logprobs from the policy at the current optimisation step (with adapters enabled)
+        model_kwargs: dict[str, torch.Tensor] = {}
+        if trajectory.visual_pos_masks is not None:
+            model_kwargs["visual_pos_masks"] = trajectory.visual_pos_masks
+        if trajectory.pixel_values is not None:
+            model_kwargs["pixel_values"] = trajectory.pixel_values
+        if trajectory.image_grid_thw is not None:
+            model_kwargs["image_grid_thw"] = trajectory.image_grid_thw
+
         with self.activations_handling_ctx:
             pi_logits = self._model(
                 trajectory.query_responses,
                 input_pos=trajectory.position_ids,
                 mask=trajectory.masks,
+                **model_kwargs,
             )
 
         pi_logits = rlhf.truncate_sequence_for_logprobs(pi_logits, context_length)
