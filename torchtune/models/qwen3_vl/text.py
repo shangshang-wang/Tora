@@ -90,12 +90,35 @@ class Qwen3VLTextRotaryEmbedding(nn.Module):
         self.config = config
 
         dim = config.head_dim
-        inv_freq = 1.0 / (config.rope_theta ** (torch.arange(0, dim, 2, dtype=torch.float32, device=device) / dim))
-        self.register_buffer("inv_freq", inv_freq, persistent=False)
+        self.dim = dim
+        self.rope_theta = config.rope_theta
+        self.register_buffer(
+            "inv_freq",
+            torch.empty(0, device=device, dtype=torch.float32),
+            persistent=False,
+        )
+        self.rope_init()
         self.original_inv_freq = self.inv_freq.clone()
 
         self.attention_scaling = 1.0
         self.mrope_section = rope_scaling.get("mrope_section", [24, 20, 20])
+
+    def rope_init(self, device: Optional[torch.device] = None) -> None:
+        target_device = device if device is not None else self.inv_freq.device
+        if target_device.type == "meta":
+            if torch.cuda.is_available():
+                current_idx = torch.cuda.current_device()
+                target_device = torch.device("cuda", current_idx)
+            else:
+                target_device = torch.device("cpu")
+        inv_freq = 1.0 / (
+            self.rope_theta
+            ** (
+                torch.arange(0, self.dim, 2, dtype=torch.float32, device=target_device)
+                / self.dim
+            )
+        )
+        self._buffers["inv_freq"] = inv_freq
 
     def apply_interleaved_mrope(self, freqs: Tensor, mrope_section: Sequence[int]) -> Tensor:
         freqs_t = freqs[0]
