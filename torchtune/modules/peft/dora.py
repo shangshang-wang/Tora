@@ -140,13 +140,23 @@ class DoRALinear(nn.Module, AdapterModule):
 
         if isinstance(self.magnitude, DTensor):
             if not isinstance(weight_norm, DTensor):
+                # weight_norm is a full local tensor, need to convert to DTensor
+                # by first creating a replicated DTensor then redistributing to match magnitude's sharding
+                from torch.distributed._tensor import Replicate
                 device_mesh = self.magnitude.device_mesh
                 placements = self.magnitude.placements
-                # Convert local tensor to DTensor with same distribution as magnitude
-                weight_norm = DTensor.from_local(
+
+                # Create replicated DTensor from full tensor
+                weight_norm_replicated = DTensor.from_local(
                     weight_norm,
                     device_mesh,
-                    placements
+                    [Replicate()],
+                    run_check=False
+                )
+                # Redistribute to match magnitude's sharding
+                weight_norm = weight_norm_replicated.redistribute(
+                    device_mesh=device_mesh,
+                    placements=placements
                 )
             self.magnitude.copy_(weight_norm)
         else:
@@ -155,14 +165,33 @@ class DoRALinear(nn.Module, AdapterModule):
             self.magnitude.copy_(weight_norm)
 
     def _get_weight_norm(self, weight, lora_weight):
-        # Convert DTensors to local tensors if needed
-        if hasattr(weight, 'to_local'):
-            weight = weight.to_local()
-        if hasattr(lora_weight, 'to_local'):
-            lora_weight = lora_weight.to_local()
+        # Handle FSDP sharded tensors properly
+        # For DoRA initialization, we need the full weight to compute the correct norm
+        # Both base weight and lora_weight can be sharded by FSDP, so we need to gather both
+        from torch.distributed._tensor import Replicate
 
-        weight = weight.to(lora_weight.dtype) + self.scaling * lora_weight
-        weight_norm = torch.linalg.norm(weight, dim=1).to(weight.dtype)
+        # Gather full base weight if sharded
+        if isinstance(weight, DTensor):
+            full_weight = weight.redistribute(
+                device_mesh=weight.device_mesh,
+                placements=[Replicate()]
+            ).to_local()
+        else:
+            full_weight = weight
+
+        # Gather full lora weight if sharded
+        if isinstance(lora_weight, DTensor):
+            full_lora_weight = lora_weight.redistribute(
+                device_mesh=lora_weight.device_mesh,
+                placements=[Replicate()]
+            ).to_local()
+        else:
+            full_lora_weight = lora_weight
+
+        # Now both tensors are full local tensors, compute the combined weight and its norm
+        combined_weight = full_weight.to(full_lora_weight.dtype) + self.scaling * full_lora_weight
+        weight_norm = torch.linalg.norm(combined_weight, dim=1).to(combined_weight.dtype)
+
         return weight_norm
 
     def adapter_params(self) -> list[str]:
@@ -360,13 +389,23 @@ class DoRALinearCache(nn.Module, AdapterModule):
 
         if isinstance(self.magnitude, DTensor):
             if not isinstance(weight_norm, DTensor):
+                # weight_norm is a full local tensor, need to convert to DTensor
+                # by first creating a replicated DTensor then redistributing to match magnitude's sharding
+                from torch.distributed._tensor import Replicate
                 device_mesh = self.magnitude.device_mesh
                 placements = self.magnitude.placements
-                # Convert local tensor to DTensor with same distribution as magnitude
-                weight_norm = DTensor.from_local(
+
+                # Create replicated DTensor from full tensor
+                weight_norm_replicated = DTensor.from_local(
                     weight_norm,
                     device_mesh,
-                    placements
+                    [Replicate()],
+                    run_check=False
+                )
+                # Redistribute to match magnitude's sharding
+                weight_norm = weight_norm_replicated.redistribute(
+                    device_mesh=device_mesh,
+                    placements=placements
                 )
             self.magnitude.copy_(weight_norm)
         else:
@@ -375,14 +414,33 @@ class DoRALinearCache(nn.Module, AdapterModule):
             self.magnitude.copy_(weight_norm)
 
     def _get_weight_norm(self, weight, lora_weight):
-        # Convert DTensors to local tensors if needed
-        if hasattr(weight, 'to_local'):
-            weight = weight.to_local()
-        if hasattr(lora_weight, 'to_local'):
-            lora_weight = lora_weight.to_local()
+        # Handle FSDP sharded tensors properly
+        # For DoRA initialization, we need the full weight to compute the correct norm
+        # Both base weight and lora_weight can be sharded by FSDP, so we need to gather both
+        from torch.distributed._tensor import Replicate
 
-        weight = weight.to(lora_weight.dtype) + self.scaling * lora_weight
-        weight_norm = torch.linalg.norm(weight, dim=1).to(weight.dtype)
+        # Gather full base weight if sharded
+        if isinstance(weight, DTensor):
+            full_weight = weight.redistribute(
+                device_mesh=weight.device_mesh,
+                placements=[Replicate()]
+            ).to_local()
+        else:
+            full_weight = weight
+
+        # Gather full lora weight if sharded
+        if isinstance(lora_weight, DTensor):
+            full_lora_weight = lora_weight.redistribute(
+                device_mesh=lora_weight.device_mesh,
+                placements=[Replicate()]
+            ).to_local()
+        else:
+            full_lora_weight = lora_weight
+
+        # Now both tensors are full local tensors, compute the combined weight and its norm
+        combined_weight = full_weight.to(full_lora_weight.dtype) + self.scaling * full_lora_weight
+        weight_norm = torch.linalg.norm(combined_weight, dim=1).to(combined_weight.dtype)
+
         return weight_norm
 
     def _invalidate_cache(self):
