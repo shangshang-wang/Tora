@@ -1,19 +1,24 @@
-# Config for single device LoRA GRPO fine-tuning in full_grpo_single_device.py
+# Config for single device LoRA GRPO fine-tuning in lora_grpo_single_device.py
 # using a Qwen3 4B Vision-Language model.
 #
 # Prepare the base checkpoint first:
-#   tune download Qwen/Qwen3-VL-4B-Instruct --output-dir /tmp/Qwen3-VL-4B-Instruct
+#   tune download Qwen/Qwen3-VL-4B-Instruct --output-dir ${oc.env:BASE_MODEL_DIR}/Qwen3-VL-4B-Instruct
 #
 # To launch GRPO training on a single device run:
-#   tune run full_grpo_single_device --config qwen3_vl/4b_lora_grpo_single_device
+#   tune run lora_grpo_single_device --config qwen3_vl/4B_lora_grpo_single_device
 #
 # Example override of the checkpoint directory:
-#   tune run full_grpo_single_device --config qwen3_vl/4b_lora_grpo_single_device \
-#       checkpointer.checkpoint_dir=<YOUR_CHECKPOINT_DIR>
+#   tune run lora_grpo_single_device --config qwen3_vl/4B_lora_grpo_single_device \
+#       base_model_dir=<YOUR_CHECKPOINT_DIR>
 #
 # This configuration trains only the LoRA adapters while keeping the base model frozen.
 
-output_dir: /tmp/torchtune/qwen3_vl_4B/lora_grpo_single_device
+base_model_dir: ${oc.env:BASE_MODEL_DIR}
+base_output_dir: ${oc.env:BASE_OUTPUT_DIR}
+name: ${oc.env:CONFIG_NAME}
+
+output_dir: ${base_output_dir}/${name}
+base_model_path: ${base_model_dir}/${oc.env:MODEL_SUBDIR}
 
 # Model arguments
 model:
@@ -29,18 +34,18 @@ model:
 # Tokenizer / transform
 tokenizer:
   _component_: torchtune.models.qwen3_vl.qwen3_vl_transform
-  vocab_path: /tmp/Qwen3-VL-4B-Instruct/vocab.json
-  merges_path: /tmp/Qwen3-VL-4B-Instruct/merges.txt
-  special_tokens_path: /tmp/Qwen3-VL-4B-Instruct/tokenizer.json
-  preprocessor_config_path: /tmp/Qwen3-VL-4B-Instruct/preprocessor_config.json
-  video_preprocessor_config_path: /tmp/Qwen3-VL-4B-Instruct/video_preprocessor_config.json
+  vocab_path: ${base_model_path}/vocab.json
+  merges_path: ${base_model_path}/merges.txt
+  special_tokens_path: ${base_model_path}/tokenizer.json
+  preprocessor_config_path: ${base_model_path}/preprocessor_config.json
+  video_preprocessor_config_path: ${base_model_path}/video_preprocessor_config.json
   max_seq_len: 8192
   image_size: 448
 
 # Checkpointers
 checkpointer:
   _component_: torchtune.training.FullModelHFCheckpointer
-  checkpoint_dir: /tmp/Qwen3-VL-4B-Instruct/
+  checkpoint_dir: ${base_model_path}
   checkpoint_files:
     filename_format: model-{}-of-{}.safetensors
     max_filename: "00002"
@@ -50,7 +55,7 @@ checkpointer:
 
 ref_checkpointer:
   _component_: torchtune.training.FullModelHFCheckpointer
-  checkpoint_dir: /tmp/Qwen3-VL-4B-Instruct/
+  checkpoint_dir: ${base_model_path}
   checkpoint_files:
     filename_format: model-{}-of-{}.safetensors
     max_filename: "00002"
@@ -84,7 +89,7 @@ ppo_epochs: 1
 optimizer:
   _component_: torch.optim.AdamW
   lr: 1e-3
-  fused: False
+  fused: True
 
 lr_scheduler:
   _component_: torchtune.training.lr_schedulers.get_cosine_schedule_with_warmup
@@ -117,12 +122,12 @@ reward_functions:
 
 # Logging
 metric_logger:
-  _component_: torchtune.training.metric_logging.DiskLogger
-  log_dir: ${output_dir}/logs
-
+  _component_: torchtune.training.metric_logging.WandBLogger
+#  log_dir: ${output_dir}/logs
+  project: Tora_vlm_dev
 log_every_n_steps: 1
 log_peak_memory_stats: True
-log_level: INFO
+log_level: INFO  # DEBUG, WARN, etc.
 
 # Profiler (disabled by default)
 profiler:

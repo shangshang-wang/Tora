@@ -1,14 +1,14 @@
 # Config for single device GRPO fine-tuning in full_grpo_single_device.py
-# using a Qwen3 4B Vision-Language model.
+# using a Qwen3 2B Vision-Language model.
 #
 # Prior to launching, download the base checkpoint to ${oc.env:BASE_MODEL_DIR}:
-#   tune download Qwen/Qwen3-VL-4B-Instruct --output-dir ${oc.env:BASE_MODEL_DIR}/Qwen3-VL-4B-Instruct
+#   tune download Qwen/Qwen3-VL-2B-Instruct --output-dir ${oc.env:BASE_MODEL_DIR}/Qwen3-VL-2B-Instruct
 #
 # To launch GRPO training on a single device, run from the repo root:
-#   tune run full_grpo_single_device --config qwen3_vl/4B_full_grpo_single_device
+#   tune run full_grpo_single_device --config qwen3_vl/2B_full_grpo_single_device
 #
 # Example override for the checkpoint directory:
-#   tune run full_grpo_single_device --config qwen3_vl/4B_full_grpo_single_device \
+#   tune run full_grpo_single_device --config qwen3_vl/2B_full_grpo_single_device \
 #       base_model_dir=<YOUR_CHECKPOINT_DIR>
 #
 # This recipe is tailored for single-GPU experimentation; adjust batch sizes and
@@ -23,7 +23,7 @@ base_model_path: ${base_model_dir}/${oc.env:MODEL_SUBDIR}
 
 # Model arguments
 model:
-  _component_: torchtune.models.qwen3_vl.qwen3_vl_4b_instruct
+  _component_: torchtune.models.qwen3_vl.qwen3_vl_2b_instruct
   decoder_trainable: True
   encoder_trainable: True
   image_size: 448
@@ -44,8 +44,7 @@ checkpointer:
   _component_: torchtune.training.FullModelHFCheckpointer
   checkpoint_dir: ${base_model_path}
   checkpoint_files:
-    filename_format: model-{}-of-{}.safetensors
-    max_filename: "00002"
+    - model.safetensors
   recipe_checkpoint: null
   output_dir: ${output_dir}
   model_type: QWEN3_VL
@@ -54,8 +53,7 @@ ref_checkpointer:
   _component_: torchtune.training.FullModelHFCheckpointer
   checkpoint_dir: ${base_model_path}
   checkpoint_files:
-    filename_format: model-{}-of-{}.safetensors
-    max_filename: "00002"
+    - model.safetensors
   recipe_checkpoint: null
   output_dir: ${output_dir}/ref
   model_type: QWEN3_VL
@@ -85,8 +83,9 @@ top_k: null
 ppo_epochs: 1
 
 optimizer:
-  _component_: bitsandbytes.optim.PagedAdamW8bit
+  _component_: torch.optim.AdamW
   lr: 1e-5
+  fused: True
 
 lr_scheduler:
   _component_: torchtune.training.lr_schedulers.get_cosine_schedule_with_warmup
