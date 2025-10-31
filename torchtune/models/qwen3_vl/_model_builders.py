@@ -7,6 +7,7 @@
 import json
 from pathlib import Path
 from typing import Optional, Sequence
+from functools import partial
 
 from torchtune.data._prompt_templates import _TemplateType
 
@@ -77,6 +78,61 @@ def qwen3_vl_transform(
     )
 
 
+
+def qwen3_vl_2b_instruct(
+    decoder_trainable: bool = True,
+    encoder_trainable: bool = True,
+    image_size: int = 448,
+) -> Qwen3VLForConditionalGeneration:
+    """Reference Qwen3-VL 2B instruct model."""
+
+    encoder = qwen3_vl_encoder(
+        depth=24,
+        hidden_size=1024,
+        intermediate_size=4096,
+        num_heads=16,
+        in_channels=3,
+        patch_size=16,
+        temporal_patch_size=2,
+        spatial_merge_size=2,
+        out_hidden_size=2048,
+        num_position_embeddings=2304,
+        deepstack_visual_indexes=[5, 11, 17],
+        hidden_act="gelu_pytorch_tanh",
+        attention_dropout=0.0,
+    )
+
+    decoder = qwen3_vl_decoder(
+        vocab_size=151_936,
+        num_layers=28,
+        num_heads=16,
+        num_kv_heads=8,
+        embed_dim=2048,
+        head_dim=128,
+        intermediate_dim=6144,
+        max_seq_len=262_144,
+        rope_base=5_000_000.0,
+        rms_norm_eps=1e-6,
+        attention_dropout=0.0,
+        hidden_act="silu",
+        pad_token_id=0,
+    )
+
+    model = Qwen3VLModel(vision=encoder, text=decoder)
+    if not encoder_trainable:
+        for param in model.vision.parameters():
+            param.requires_grad = False
+    if not decoder_trainable:
+        for param in model.text.parameters():
+            param.requires_grad = False
+
+    lm = Qwen3VLForConditionalGeneration(model=model, vocab_size=151_936)
+    if not decoder_trainable:
+        for param in lm.lm_head.parameters():
+            param.requires_grad = False
+    return lm
+
+
 def qwen3_vl_4b_instruct(
     decoder_trainable: bool = True,
     encoder_trainable: bool = True,
@@ -114,6 +170,128 @@ def qwen3_vl_4b_instruct(
         attention_dropout=0.0,
         hidden_act="silu",
         pad_token_id=0,
+    )
+
+    model = Qwen3VLModel(vision=encoder, text=decoder)
+    if not encoder_trainable:
+        for param in model.vision.parameters():
+            param.requires_grad = False
+    if not decoder_trainable:
+        for param in model.text.parameters():
+            param.requires_grad = False
+
+    lm = Qwen3VLForConditionalGeneration(model=model, vocab_size=151_936)
+    if not decoder_trainable:
+        for param in lm.lm_head.parameters():
+            param.requires_grad = False
+    return lm
+
+
+def qwen3_vl_8b_instruct(
+    decoder_trainable: bool = True,
+    encoder_trainable: bool = True,
+    image_size: int = 448,
+) -> Qwen3VLForConditionalGeneration:
+    """Reference Qwen3-VL 8B instruct model."""
+
+    encoder = qwen3_vl_encoder(
+        depth=27,
+        hidden_size=1152,
+        intermediate_size=4304,
+        num_heads=16,
+        in_channels=3,
+        patch_size=16,
+        temporal_patch_size=2,
+        spatial_merge_size=2,
+        out_hidden_size=4096,
+        num_position_embeddings=2304,
+        deepstack_visual_indexes=[8, 16, 24],
+        hidden_act="gelu_pytorch_tanh",
+        attention_dropout=0.0,
+    )
+
+    decoder = qwen3_vl_decoder(
+        vocab_size=151_936,
+        num_layers=36,
+        num_heads=32,
+        num_kv_heads=8,
+        embed_dim=4096,
+        head_dim=128,
+        intermediate_dim=12_288,
+        max_seq_len=262_144,
+        rope_base=5_000_000.0,
+        rms_norm_eps=1e-6,
+        attention_dropout=0.0,
+        hidden_act="silu",
+        pad_token_id=0,
+    )
+
+    model = Qwen3VLModel(vision=encoder, text=decoder)
+    if not encoder_trainable:
+        for param in model.vision.parameters():
+            param.requires_grad = False
+    if not decoder_trainable:
+        for param in model.text.parameters():
+            param.requires_grad = False
+
+    lm = Qwen3VLForConditionalGeneration(model=model, vocab_size=151_936)
+    if not decoder_trainable:
+        for param in lm.lm_head.parameters():
+            param.requires_grad = False
+    return lm
+
+
+def lora_qwen3_vl_2b_instruct(
+    lora_attn_modules: Sequence[str],
+    apply_lora_to_mlp: bool = True,
+    decoder_trainable: bool = True,
+    encoder_trainable: bool = False,
+    image_size: int = 448,
+    lora_rank: int = 8,
+    lora_alpha: float = 16,
+    lora_dropout: float = 0.0,
+    lora_type: str = "lora",
+    quantize_base: bool = False,
+) -> Qwen3VLForConditionalGeneration:
+    """Qwen3-VL 2B instruct model with LoRA adapters on the text decoder."""
+
+    encoder = qwen3_vl_encoder(
+        depth=24,
+        hidden_size=1024,
+        intermediate_size=4096,
+        num_heads=16,
+        in_channels=3,
+        patch_size=16,
+        temporal_patch_size=2,
+        spatial_merge_size=2,
+        out_hidden_size=2048,
+        num_position_embeddings=2304,
+        deepstack_visual_indexes=[5, 11, 17],
+        hidden_act="gelu_pytorch_tanh",
+        attention_dropout=0.0,
+    )
+
+    decoder = lora_qwen3_vl_decoder(
+        lora_attn_modules=list(lora_attn_modules),
+        apply_lora_to_mlp=apply_lora_to_mlp,
+        vocab_size=151_936,
+        num_layers=28,
+        num_heads=16,
+        num_kv_heads=8,
+        embed_dim=2048,
+        head_dim=128,
+        intermediate_dim=6144,
+        max_seq_len=262_144,
+        rope_base=5_000_000.0,
+        rms_norm_eps=1e-6,
+        attention_dropout=0.0,
+        hidden_act="silu",
+        pad_token_id=0,
+        lora_rank=lora_rank,
+        lora_alpha=lora_alpha,
+        lora_dropout=lora_dropout,
+        lora_type=lora_type,
+        quantize_base=quantize_base,
     )
 
     model = Qwen3VLModel(vision=encoder, text=decoder)
@@ -197,3 +375,93 @@ def lora_qwen3_vl_4b_instruct(
         for param in lm.lm_head.parameters():
             param.requires_grad = False
     return lm
+
+
+def lora_qwen3_vl_8b_instruct(
+    lora_attn_modules: Sequence[str],
+    apply_lora_to_mlp: bool = True,
+    decoder_trainable: bool = True,
+    encoder_trainable: bool = False,
+    image_size: int = 448,
+    lora_rank: int = 8,
+    lora_alpha: float = 16,
+    lora_dropout: float = 0.0,
+    lora_type: str = "lora",
+    quantize_base: bool = False,
+) -> Qwen3VLForConditionalGeneration:
+    """Qwen3-VL 8B instruct model with LoRA adapters on the text decoder."""
+
+    encoder = qwen3_vl_encoder(
+        depth=27,
+        hidden_size=1152,
+        intermediate_size=4304,
+        num_heads=16,
+        in_channels=3,
+        patch_size=16,
+        temporal_patch_size=2,
+        spatial_merge_size=2,
+        out_hidden_size=4096,
+        num_position_embeddings=2304,
+        deepstack_visual_indexes=[8, 16, 24],
+        hidden_act="gelu_pytorch_tanh",
+        attention_dropout=0.0,
+    )
+
+    decoder = lora_qwen3_vl_decoder(
+        lora_attn_modules=list(lora_attn_modules),
+        apply_lora_to_mlp=apply_lora_to_mlp,
+        vocab_size=151_936,
+        num_layers=36,
+        num_heads=32,
+        num_kv_heads=8,
+        embed_dim=4096,
+        head_dim=128,
+        intermediate_dim=12_288,
+        max_seq_len=262_144,
+        rope_base=5_000_000.0,
+        rms_norm_eps=1e-6,
+        attention_dropout=0.0,
+        hidden_act="silu",
+        pad_token_id=0,
+        lora_rank=lora_rank,
+        lora_alpha=lora_alpha,
+        lora_dropout=lora_dropout,
+        lora_type=lora_type,
+        quantize_base=quantize_base,
+    )
+
+    model = Qwen3VLModel(vision=encoder, text=decoder)
+    if not encoder_trainable:
+        for param in model.vision.parameters():
+            param.requires_grad = False
+    if not decoder_trainable:
+        for param in model.text.parameters():
+            param.requires_grad = False
+
+    lm = Qwen3VLForConditionalGeneration(model=model, vocab_size=151_936)
+    if not decoder_trainable:
+        for param in lm.lm_head.parameters():
+            param.requires_grad = False
+    return lm
+
+
+qlora_qwen3_vl_2b_instruct = partial(lora_qwen3_vl_2b_instruct, quantize_base=True)
+qlora_qwen3_vl_2b_instruct.__doc__ = """
+Builder for creating a Qwen3-VL 2B instruct model with QLoRA enabled. Base model weights in linear layers
+that LoRA is applied to are quantized per the QLoRA paper: https://arxiv.org/abs/2305.14314.
+Please see `lora_qwen3_vl_2b_instruct` for full API arguments.
+"""
+
+qlora_qwen3_vl_4b_instruct = partial(lora_qwen3_vl_4b_instruct, quantize_base=True)
+qlora_qwen3_vl_4b_instruct.__doc__ = """
+Builder for creating a Qwen3-VL 4B instruct model with QLoRA enabled. Base model weights in linear layers
+that LoRA is applied to are quantized per the QLoRA paper: https://arxiv.org/abs/2305.1431.
+Please see `lora_qwen3_vl_4b_instruct` for full API arguments.
+"""
+
+qlora_qwen3_vl_8b_instruct = partial(lora_qwen3_vl_8b_instruct, quantize_base=True)
+qlora_qwen3_vl_8b_instruct.__doc__ = """
+Builder for creating a Qwen3-VL 8B instruct model with QLoRA enabled. Base model weights in linear layers
+that LoRA is applied to are quantized per the QLoRA paper: https://arxiv.org/abs/2305.1431.
+Please see `lora_qwen3_vl_8b_instruct` for full API arguments.
+"""
