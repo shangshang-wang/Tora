@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Callable, Sequence
+from typing import Callable, Optional, Sequence
 
 import torch
 import torch.nn.functional as F
@@ -141,9 +141,30 @@ class Qwen3VLVisionRotaryEmbedding(nn.Module):
 
     def __init__(self, dim: int, theta: float = 10_000.0) -> None:
         super().__init__()
-        inv_freq = 1.0 / (theta ** (torch.arange(0, dim, 2, dtype=torch.float32) / dim))
-        self.register_buffer("inv_freq", inv_freq, persistent=False)
+        self.dim = dim
+        self.theta = theta
+        # register an empty buffer that will be materialized on the target device
+        self.register_buffer("inv_freq", torch.empty(0), persistent=False)
+        self.rope_init()
 
+    def rope_init(self, device: Optional[torch.device] = None) -> None:
+        target_device = device if device is not None else self.inv_freq.device
+        if target_device.type == "meta":
+            if torch.cuda.is_available():
+                current_idx = torch.cuda.current_device()
+                target_device = torch.device("cuda", current_idx)
+            else:
+                target_device = torch.device("cpu")
+        inv_freq = 1.0 / (
+            self.theta
+            ** (
+                torch.arange(0, self.dim, 2, dtype=torch.float32, device=target_device)
+                / self.dim
+            )
+        )
+        # replace the existing buffer with the newly materialized values
+        self._buffers["inv_freq"] = inv_freq
+   
     def forward(self, seq_len: int) -> Tensor:
         seq = torch.arange(seq_len, device=self.inv_freq.device, dtype=self.inv_freq.dtype)
         freqs = torch.outer(seq, self.inv_freq)
