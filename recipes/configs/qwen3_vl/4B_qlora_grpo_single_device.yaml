@@ -1,18 +1,17 @@
-# Config for single device GRPO fine-tuning in full_grpo_single_device.py
+# Config for single device LoRA GRPO fine-tuning in lora_grpo_single_device.py
 # using a Qwen3 4B Vision-Language model.
 #
-# Prior to launching, download the base checkpoint to ${oc.env:BASE_MODEL_DIR}:
+# Prepare the base checkpoint first:
 #   tune download Qwen/Qwen3-VL-4B-Instruct --output-dir ${oc.env:BASE_MODEL_DIR}/Qwen3-VL-4B-Instruct
 #
-# To launch GRPO training on a single device, run from the repo root:
-#   tune run full_grpo_single_device --config qwen3_vl/4B_full_grpo_single_device
+# To launch GRPO training on a single device run:
+#   tune run lora_grpo_single_device --config qwen3_vl/4B_lora_grpo_single_device
 #
-# Example override for the checkpoint directory:
-#   tune run full_grpo_single_device --config qwen3_vl/4B_full_grpo_single_device \
+# Example override of the checkpoint directory:
+#   tune run lora_grpo_single_device --config qwen3_vl/4B_lora_grpo_single_device \
 #       base_model_dir=<YOUR_CHECKPOINT_DIR>
 #
-# This recipe is tailored for single-GPU experimentation; adjust batch sizes and
-# `max_generated_tokens` to fit your hardware constraints.
+# This configuration trains only the LoRA adapters while keeping the base model frozen.
 
 base_model_dir: ${oc.env:BASE_MODEL_DIR}
 base_output_dir: ${oc.env:BASE_OUTPUT_DIR}
@@ -23,10 +22,14 @@ base_model_path: ${base_model_dir}/${oc.env:MODEL_SUBDIR}
 
 # Model arguments
 model:
-  _component_: torchtune.models.qwen3_vl.qwen3_vl_4b_instruct
-  decoder_trainable: True
-  encoder_trainable: True
-  image_size: 448
+  _component_: torchtune.models.qwen3_vl.qlora_qwen3_vl_4b_instruct
+  lora_attn_modules: ['q_proj', 'v_proj', 'output_proj']
+  apply_lora_to_mlp: True
+  lora_rank: 8
+  lora_alpha: 16
+  lora_dropout: 0.0
+  lora_type: "lora"
+  encoder_trainable: False
 
 # Tokenizer / transform
 tokenizer:
@@ -37,7 +40,7 @@ tokenizer:
   preprocessor_config_path: ${base_model_path}/preprocessor_config.json
   video_preprocessor_config_path: ${base_model_path}/video_preprocessor_config.json
   max_seq_len: 8192
-  image_size: ${model.image_size}
+  image_size: 448
 
 # Checkpointers
 checkpointer:
@@ -65,18 +68,17 @@ save_every_n_epochs: 1
 
 # Dataset
 dataset:
-  _component_: torchtune.rl.clevr_cogen.clevr_cogen_dataset
-  source: leonardPKU/clevr_cogen_a_train
-  split: train
+  _component_: torchtune.rl.gsm8k.gsm8k_dataset
   partition: 1-9/10
+
 seed: null
 shuffle: False
-collate_fn: torchtune.rl.data.padded_collate_rl_multimodal
+collate_fn: torchtune.rl.data.padded_collate_rl
 
 # Training arguments
 epochs: 20
 num_steps: 200
-batch_size: 1
+batch_size: 2
 forward_batch_size: 1
 grpo_samples: 4
 max_generated_tokens: 256
@@ -85,8 +87,9 @@ top_k: null
 ppo_epochs: 1
 
 optimizer:
-  _component_: bitsandbytes.optim.PagedAdamW8bit
-  lr: 1e-5
+  _component_: torch.optim.AdamW
+  lr: 1e-3
+  fused: True
 
 lr_scheduler:
   _component_: torchtune.training.lr_schedulers.get_cosine_schedule_with_warmup
