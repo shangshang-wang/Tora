@@ -133,6 +133,24 @@ class OffloadActivations(saved_tensors_hooks):
                 x.element_size() * x.nelement()
             )  # x.element_size() * x._base_storage().nbytes()
 
+        def stream_context(stream):
+            if hasattr(stream, "__enter__"):
+                return stream
+            accelerator_type = torch.accelerator.current_accelerator().type
+            if (
+                accelerator_type == "cuda"
+                and hasattr(torch, "cuda")
+                and hasattr(torch.cuda, "stream")
+            ):
+                return torch.cuda.stream(stream)
+            if (
+                accelerator_type == "xpu"
+                and hasattr(torch, "xpu")
+                and hasattr(torch.xpu, "stream")
+            ):
+                return torch.xpu.stream(stream)
+            return contextlib.nullcontext()
+
         # -------- core pack / unpack work -------- #
         def pack_tensor(activation: torch.Tensor) -> int:
             # activations are passed in during forward pass - from here we take over and return a unique id
@@ -177,7 +195,8 @@ class OffloadActivations(saved_tensors_hooks):
                     self.s1.wait_stream(self.s0)
 
                 stream = self.s1 if self.use_streams else self.s0
-                with stream:
+
+                with stream_context(stream):
                     try:
                         cpu_tensor = torch.empty_like(
                             activation, pin_memory=self.use_pin_memory, device="cpu"
@@ -284,7 +303,7 @@ class OffloadActivations(saved_tensors_hooks):
                     brought_back_from_cpu = False
                 else:
                     # Kick off the process to bring tensors back
-                    with self.s1:
+                    with stream_context(self.s1):
                         gpu_tensor = maybe_gpu_tensor.to(
                             torch.accelerator.current_accelerator(), non_blocking=True
                         )
