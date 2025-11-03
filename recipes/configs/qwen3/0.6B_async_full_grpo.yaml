@@ -1,0 +1,117 @@
+# Config for async multi-node GRPO in recipes/async_full_grpo.py
+# using a Qwen3 0.6B base model (quick to iterate on this task).
+#
+# This config assumes that you've run the following command before launching:
+#   tune download Qwen/Qwen3-0.6B
+#
+# Unlike synchronous recipes, this launches only the controller process. All
+# Ray actors (inference, post-processing, trainers) are spun up from there.
+
+base_model_dir: ${oc.env:BASE_MODEL_DIR}
+base_output_dir: ${oc.env:BASE_OUTPUT_DIR}
+name: ${oc.env:CONFIG_NAME}
+
+output_dir: ${base_output_dir}/${name}
+base_model_path: ${base_model_dir}/Qwen3-0.6B  # Use SFT checkpoint as starting point
+
+# Model + tokenizer (Qwen3 0.6B)
+model:
+  _component_: torchtune.models.qwen3.qwen3_0_6b_base
+tokenizer:
+  _component_: torchtune.models.qwen3.qwen3_tokenizer
+  path: ${base_model_dir}/Qwen3-0.6B/vocab.json
+  merges_file: ${base_model_dir}/Qwen3-0.6B/merges.txt
+  max_seq_len: 1024
+
+# Data
+dataset:
+  _component_: torchtune.rl.gsm8k.gsm8k_dataset
+  partition: 1-9/10
+shuffle: False
+
+# Orchestration
+orchestration:
+  num_inference_workers: 1
+  num_postprocessing_workers: 1
+  num_training_workers: 1
+  replay_buffer_size: ${inference.batch_size}
+  num_steps: 2000
+
+# Inference (vLLM)
+inference:
+  engine: vllm
+  model: ${base_model_path}
+  top_k: null
+  temperature: 1.0
+  top_p: 1.0
+  tensor_parallel_dim: 1
+  max_generated_tokens: 512
+  batch_size: 1
+  group_size: 4
+  gpu_memory_utilization: 0.7
+  total_batch_size: ${eval:'${inference.batch_size} * ${inference.group_size}'}
+  steps_before_weight_sync: 1
+  queue_maxsize: ${eval:'${orchestration.num_inference_workers} * ${training.steps_before_weight_sync}'}
+
+# Post-processing
+postprocessing:
+  ref_checkpointer:
+    _component_: torchtune.training.FullModelHFCheckpointer
+    checkpoint_dir: ${base_model_path}
+    checkpoint_files: [
+      model.safetensors,
+    ]
+    model_type: QWEN3
+
+# Training
+training:
+  checkpointer:
+    _component_: torchtune.training.FullModelHFCheckpointer
+    checkpoint_dir: ${base_model_path}
+    checkpoint_files: [
+      model.safetensors,
+    ]
+    recipe_checkpoint: null
+    output_dir: ${output_dir}
+    model_type: QWEN3
+  batch_size: 2
+  ppo_epochs: 1
+  clip_grad_norm: 1.0
+  save_every_n_steps: 500
+  enable_activation_checkpointing: True
+  enable_activation_offloading: False
+  compile: False
+  steps_before_weight_sync: 1
+  optimizer:
+    _component_: torch.optim.AdamW
+    lr: 2e-5
+    eps: 1e-8
+  loss:
+    _component_: torchtune.rl.loss.LinearGRPOLoss
+    kl_coeff: 0.01
+    epsilon: 0.2
+  seed: null
+
+reward_functions:
+  - _component_: torchtune.rl.rewards.FormattedMathCorrectnessReward
+    answer_tag: answer
+    positive_reward: 10.0
+    negative_reward: 0.0
+  - _component_: torchtune.rl.rewards.ThinkingAnswerFormattingReward
+    think_tag: think
+    answer_tag: answer
+    positive_reward: 1.0
+    negative_reward: 0.0
+
+# Logging
+metric_logger:
+  _component_: torchtune.training.metric_logging.WandBLogger
+  project: Tora_grpo_dev
+log_every_n_steps: 1
+log_peak_memory_stats: True
+debug_logging_enabled: False
+debug_num_samples_per_step: 1
+
+profiler:
+  _component_: torchtune.training.setup_torch_profiler
+  enabled: False
