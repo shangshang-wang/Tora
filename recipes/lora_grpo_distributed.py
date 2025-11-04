@@ -72,12 +72,14 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
             back during the backward pass. As always, there is a tradeoff--these savings in memory can
             come at the cost of training performance and CPU resources.
 
-        - Precision. Full fp32 and bf16 training are supported. Precision is controlled using the ``dtype``
-            flag. When ``dtype=bf16``, all activations, gradients and optimizer states are in bfloat16. In
-            most cases this should halve the memory footprint of full precision (fp32) training, without
-            loss in model quality (will depend on the model, training data and other settings). For
-            GPUs which do not support bfloat16, we fall back to fp32. Mixed precision training and fp16
-            precision are currently not supported.
+        - Precision. Full fp32, bf16 and fp16 training are supported. Training precision is controlled
+            using the ``dtype`` flag. When ``dtype=bf16`` or ``dtype=fp16``, all activations, gradients and
+            optimizer states are stored in the reduced precision format. In most cases this should halve
+            the memory footprint of full precision (fp32) training, without loss in model quality (will
+            depend on the model, training data and other settings). For GPUs which do not support bf16, we
+            fall back to fp32. Mixed precision training is currently not supported. A separate
+            ``inference_dtype`` flag can be provided to control the rollout precision; by default it
+            matches ``dtype``.
 
         - Gradient Accumulation. You can simulate larger batch sizes by accumulating gradients. This is
             controlled using the ``gradient_accumulation_steps`` flag.
@@ -99,8 +101,9 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
         cfg (DictConfig): OmegaConf object parsed from yaml file
 
     Raises:
-        ValueError: If ``dtype`` is set to fp16.
         ValueError: If world_size is 1
+        ValueError: If ``dtype`` is set to fp16 and the device is not CUDA or XPU.
+        ValueError: If ``inference_dtype`` is set to fp16 and the device is not CUDA or XPU.
         RuntimeError: If ``dtype`` is set to bf16 and the hardware does not support bf16.
         RuntimeError: If ``enable_activation_offloading`` is True and device is not CUDA or XPU.
         RuntimeError: If ``enable_activation_offloading`` is True and ``enable_activation_checkpointing`` is False.
@@ -110,9 +113,38 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
         self._device = utils.get_device(device=cfg.device)
         self._dtype = training.get_dtype(cfg.dtype, device=self._device)
 
-        if self._dtype == torch.float16:
+        inference_dtype_cfg = cfg.get("inference_dtype", None)
+        if inference_dtype_cfg is None:
+            self._inference_dtype = self._dtype
+        else:
+            self._inference_dtype = training.get_dtype(
+                inference_dtype_cfg, device=self._device
+            )
+
+        if self._dtype == torch.float16 and self._device.type not in ("cuda", "xpu"):
             raise ValueError(
-                "full fp16 training is not supported with this recipe. Please use bf16 or fp32 instead."
+                "full fp16 training requires CUDA or XPU devices. Please switch to bf16/fp32 or set device=cuda."
+            )
+
+        if self._inference_dtype == torch.float16 and self._device.type not in ("cuda", "xpu"):
+            raise ValueError(
+                "full fp16 inference requires CUDA or XPU devices. Please switch to bf16/fp32 or set device=cuda."
+            )
+
+        if self._dtype == torch.float16:
+            warn(
+                message=(
+                    "Full fp16 training is experimental and may lead to numerical instability. "
+                    "Consider bf16 if your hardware supports it."
+                )
+            )
+
+        if self._inference_dtype == torch.float16 and self._inference_dtype != self._dtype:
+            warn(
+                message=(
+                    "Full fp16 inference is experimental and may behave differently from the training dtype. "
+                    "Monitor for numerical instability."
+                )
             )
 
         # Set up the backend for distributed training (NCCL, GLOO, etc.)
@@ -130,6 +162,11 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
         self._log_every_n_steps = cfg.get("log_every_n_steps", 1)
         self._log_peak_memory_stats = cfg.get("log_peak_memory_stats", False)
         self._logger = utils.get_logger(cfg.log_level)
+
+        utils.log_rank_zero(
+            self._logger,
+            f"Precision configuration -> training dtype: {self._dtype}, inference dtype: {self._inference_dtype}",
+        )
 
         if self._log_peak_memory_stats and self._device.type != "cuda":
             log.info(
@@ -809,24 +846,25 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
         max_total_len = context_length + self._max_generated_tokens
 
         # step 1: generate responses using the current policy (with LoRA adapters enabled)
-        with local_kv_cache(
-                model=self._model,
-                batch_size=batch_size * grpo_size,
-                device=self._device,
-                dtype=self._dtype,
-                decoder_max_seq_len=max_total_len,
-        ):
-            query_responses, _ = generate(  # [B x G, L], [B x G, L, V]
-                model=self._model,
-                prompt=batch_input_ids,
-                max_generated_tokens=self._max_generated_tokens,
-                temperature=self._temperature,
-                top_k=self._top_k,
-                pad_id=self._tokenizer.pad_id,
-                rng=self._rng,
-                stop_tokens=self._tokenizer.stop_tokens,
-                return_logits=False,
-            )
+        with training.set_default_dtype(self._inference_dtype):
+            with local_kv_cache(
+                    model=self._model,
+                    batch_size=batch_size * grpo_size,
+                    device=self._device,
+                    dtype=self._inference_dtype,
+                    decoder_max_seq_len=max_total_len,
+            ):
+                query_responses, _ = generate(  # [B x G, L], [B x G, L, V]
+                    model=self._model,
+                    prompt=batch_input_ids,
+                    max_generated_tokens=self._max_generated_tokens,
+                    temperature=self._temperature,
+                    top_k=self._top_k,
+                    pad_id=self._tokenizer.pad_id,
+                    rng=self._rng,
+                    stop_tokens=self._tokenizer.stop_tokens,
+                    return_logits=False,
+                )
 
         # Truncate if longer than expected and Pad if shorter
         query_responses = query_responses[:, :max_total_len]
