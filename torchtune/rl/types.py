@@ -5,7 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 
-from typing import NamedTuple, Optional
+from typing import Any, Dict, NamedTuple, Optional, Sequence
 
 import torch
 
@@ -40,6 +40,7 @@ class GRPOTrajectory(NamedTuple):
     position_ids: torch.Tensor = None  # [B*G, P+L]
     response_padding_masks: torch.Tensor = None  # [B*G, L]
     seq_lens: torch.Tensor = None  # [B*G]
+    answers: Optional[Sequence[str]] = None  # [B*G]
 
 
 class GRPOStats(NamedTuple):
@@ -62,4 +63,4 @@ class GRPOStats(NamedTuple):
     ratios: torch.Tensor
     clipfrac: torch.Tensor
     approx_policy_kls: torch.Tensor
-    # metadata: Optional[dict] = None
+    metadata: Optional[Dict[str, Any]] = None
