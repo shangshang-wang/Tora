@@ -13,6 +13,7 @@ from torch.utils.data import Dataset
 
 from torch.nn.utils.rnn import pad_sequence
 from torchtune.data import CROSS_ENTROPY_IGNORE_IDX, left_pad_sequence
+from torchtune.models.qwen3_vl import Qwen3VLTransform
 from torchtune.modules.tokenizers import ModelTokenizer
 from torchtune.modules.transforms import Transform
 
@@ -23,13 +24,30 @@ SYSTEM_MESSAGE = (
     "i.e., <think>reasoning process here</think> <answer>answer here</answer>."
 )
 
+SYSTEM_MESSAGE_QWEN3_VL = (
+    "A conversation between User and Assistant. The user asks a question, and the Assistant solves it. "
+    "The assistant first thinks about the reasoning process in the mind and then provides the user with the answer. "
+    "The reasoning process and answer are enclosed within <reason></reason> and <answer></answer> tags, respectively, "
+    "i.e., <reason>reasoning process here</reason> <answer>answer here</answer>."
+)
 
-def build_reasoning_prompt(question: str) -> str:
+
+def get_system_message(tokenizer: Optional[ModelTokenizer] = None) -> str:
+    if tokenizer is not None and isinstance(tokenizer, Qwen3VLTransform):
+        return SYSTEM_MESSAGE_QWEN3_VL
+    return SYSTEM_MESSAGE
+
+
+def build_reasoning_prompt(
+    question: str, system_message: Optional[str] = None
+) -> str:
     """Format a text-only reasoning prompt with explicit conversation roles."""
+
+    prompt = system_message if system_message is not None else SYSTEM_MESSAGE
 
     return "\n".join(
         [
-            f"system message: {SYSTEM_MESSAGE}",
+            f"system message: {prompt}",
             f"User: {question}",
             "Assistant:",
         ]
@@ -61,6 +79,7 @@ class RLDataset(Dataset):
     ) -> None:
         self._problem_transform = problem_transform
         self._tokenizer = tokenizer
+        self._system_message = get_system_message(tokenizer)
 
         self._data = load_dataset(source, **load_dataset_kwargs)
         if filter_fn is not None:
@@ -80,7 +99,9 @@ class RLDataset(Dataset):
             sample
         )  # keys "question" and "answer"
 
-        question = build_reasoning_prompt(transformed_sample["question"])
+        question = build_reasoning_prompt(
+            transformed_sample["question"], self._system_message
+        )
 
         q_tokens = self._tokenizer.encode(question, add_eos=False)
         mask = [1 for _ in q_tokens]

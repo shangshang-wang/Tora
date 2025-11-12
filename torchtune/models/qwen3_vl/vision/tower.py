@@ -355,6 +355,8 @@ class Qwen3VLVisionModel(nn.Module):
         return pixel_values, grid_thw
 
     def fast_pos_embed_interpolate(self, grid_thw: Tensor) -> Tensor:
+        if grid_thw.ndim == 1:
+            grid_thw = grid_thw.unsqueeze(0)
         grid_ts, grid_hs, grid_ws = grid_thw[:, 0], grid_thw[:, 1], grid_thw[:, 2]
         idx_list: list[list[int]] = [[] for _ in range(4)]
         weight_list: list[list[float]] = [[] for _ in range(4)]
@@ -415,6 +417,8 @@ class Qwen3VLVisionModel(nn.Module):
         return torch.cat(permuted, dim=0)
 
     def rot_pos_emb(self, grid_thw: Tensor) -> Tensor:
+        if grid_thw.ndim == 1:
+            grid_thw = grid_thw.unsqueeze(0)
         merge_size = self.spatial_merge_size
         max_hw = int(grid_thw[:, 1:].max().item())
         freq_table = self.rotary_pos_emb(max_hw)
@@ -473,6 +477,8 @@ class Qwen3VLVisionModel(nn.Module):
         """
         # pixel_values, grid_thw = self._flatten_visual_inputs(pixel_values, grid_thw)
         grid_thw = grid_thw.squeeze()
+        if grid_thw.ndim == 1:
+            grid_thw = grid_thw.unsqueeze(0)
 
         hidden_states = self.patch_embed(pixel_values)
         pos_embeds = self.fast_pos_embed_interpolate(grid_thw)
