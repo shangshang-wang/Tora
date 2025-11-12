@@ -17,7 +17,7 @@ from torch.optim import Optimizer
 from torchrl.data import RayReplayBuffer
 from torchtune import config, modules, training, utils
 from torchtune.rl.datatypes import Trajectory
-from torchtune.rl.types import GRPOStats, GRPOTrajectory
+from torchtune.rl.types import GRPOStats, GRPOTrajectory, stack_grpo_stats
 from torchtune.rl.utils import stateless_init_process_group
 from torchtune.generation import (
     get_causal_mask_from_padding_mask,
@@ -412,20 +412,7 @@ class TrainingWorker:
             return
 
         # Stack list[GRPOStats]
-        tensor_fields = [
-            "loss",
-            "policy_loss",
-            "kl_loss",
-            "ratios",
-            "clipfrac",
-            "approx_policy_kls",
-        ]
-        grpo_stats_stacked = GRPOStats(
-            **{
-                field: torch.stack([getattr(stats, field) for stats in grpo_stats])
-                for field in tensor_fields
-            }
-        )
+        grpo_stats_stacked = stack_grpo_stats(grpo_stats)
 
         log_dict = {}
         if self._log_peak_memory_stats:

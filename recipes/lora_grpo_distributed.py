@@ -16,7 +16,12 @@ from torchtune.config._utils import _get_component_from_path
 from torchtune.datasets import ConcatDataset
 from torchtune.rl.generation import generate
 from torchtune.rl.rewards import batched_rewards
-from torchtune.rl.types import GRPOStats, GRPOTrajectory
+from torchtune.rl.types import (
+    GRPOStats,
+    GRPOTrajectory,
+    concat_grpo_trajectories,
+    stack_grpo_stats,
+)
 from torchtune.modules import local_kv_cache
 from torchtune.modules.peft import (
     AdapterModule,
@@ -943,7 +948,7 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
                     self.generate_trajectory(batch_input_ids, batch_answers)
                 )
                 torch.cuda.empty_cache()
-        return GRPOTrajectory(*map(torch.cat, zip(*trajectories)))
+        return concat_grpo_trajectories(trajectories)
 
     def grpo_step(
             self,
@@ -1109,7 +1114,7 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
 
                         self.log_metrics(
                             trajectory,
-                            GRPOStats(*map(torch.stack, zip(*grpo_stats))),
+                            stack_grpo_stats(grpo_stats),
                             **extra_metrics,
                         )
 
