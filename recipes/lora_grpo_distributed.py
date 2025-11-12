@@ -364,17 +364,18 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
         if self._save_every_n_epochs <= 0:
             raise ValueError("save_every_n_epochs must be a positive integer.")
 
-        # Parse reward function names from the config for named logging
-        self.reward_names = []
+        # Parse and instantiate reward functions from the config for named logging and execution
+        self.reward_names: list[str] = []
+        self.reward_functions = []
         if "reward_functions" in cfg and isinstance(cfg.reward_functions, (ListConfig, list)):
             for rf_cfg in cfg.reward_functions:
-                # Extracts the class name, e.g., "FormattedMathCorrectnessReward"
                 component_path = rf_cfg.get("_component_", "")
                 if component_path:
-                    class_name = component_path.split('.')[-1]
+                    class_name = component_path.split(".")[-1]
                     self.reward_names.append(class_name)
+                self.reward_functions.append(config.instantiate(rf_cfg))
 
-            utils.log_rank_zero(log, f"Found reward names for logging: {self.reward_names}")
+            utils.log_rank_zero(log, f"Configured reward functions: {self.reward_names}")
 
         if cfg.get("stop_token_ids", False):
             stop_token_ids = cfg.stop_token_ids
@@ -878,24 +879,67 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
         )
 
         # Do some reward modeling
-        responses = responses.reshape(batch_size, grpo_size, -1)  # [B, G, L]
-        rewards, successes, _ = batched_rewards(self._tokenizer, responses, answers, self._device)
-        rewards = rewards.to(self._device)  # [B, G]
-        successes = successes.to(self._device)  # [B, G]
+        response_ids = responses.reshape(batch_size * grpo_size, -1)  # [B * G, L]
+        if self.reward_functions:
+            answers_expanded = [
+                answer for answer in answers for _ in range(grpo_size)
+            ]
+            if len(answers_expanded) != response_ids.shape[0]:
+                raise ValueError(
+                    "Number of answers does not match the number of generated responses."
+                )
 
-        # TODO Create equal weights for all reward functions
-        reward_components = rewards.clone()
+            responses_str = []
+            for i in range(response_ids.shape[0]):
+                decoded = self._tokenizer.decode(
+                    response_ids[i].tolist(), skip_special_tokens=False
+                )
+                stripped = decoded.lstrip()
+                think_idx = stripped.find("<think>")
+                if think_idx != -1:
+                    decoded = stripped[think_idx:]
+                else:
+                    decoded = f"<think>{stripped}"
+                responses_str.append(decoded)
 
-        # Create equal weights for all reward functions
-        num_reward_funcs = rewards.shape[-1]
-        reward_weights = torch.ones(num_reward_funcs, device=self._device) / num_reward_funcs
-        aggregated_rewards = (rewards * reward_weights).sum(dim=-1)  # [B, G]
-        successes = successes.mean(dim=-1)  # [B, G]
+            reward_outputs = [
+                reward_fn(response_ids, responses_str, answers_expanded)
+                for reward_fn in self.reward_functions
+            ]
+
+            reward_components_bg = torch.stack(
+                [reward_output.total_reward for reward_output in reward_outputs],
+                dim=-1,
+            ).to(self._device)
+            successes_bg = torch.stack(
+                [reward_output.successes for reward_output in reward_outputs], dim=-1
+            ).to(self._device)
+            reward_components_bg = reward_components_bg.reshape(
+                batch_size, grpo_size, -1
+            )
+            successes_bg = successes_bg.reshape(batch_size, grpo_size, -1)
+        else:
+            responses = response_ids.reshape(batch_size, grpo_size, -1)  # [B, G, L]
+            rewards_bg, successes_bg, _ = batched_rewards(
+                self._tokenizer, responses, answers, self._device
+            )
+            reward_components_bg = rewards_bg.to(self._device)
+            successes_bg = successes_bg.to(self._device)
+
+        num_reward_funcs = reward_components_bg.shape[-1]
+        reward_weights = torch.ones(num_reward_funcs, device=self._device) / max(
+            num_reward_funcs, 1
+        )
+        aggregated_rewards_bg = (reward_components_bg * reward_weights).sum(dim=-1)
+        successes_bg = successes_bg.mean(dim=-1)
 
         # Use the aggregated reward for advantage calculation
-        advantages = (aggregated_rewards - aggregated_rewards.mean(1, keepdim=True)) / (
-            aggregated_rewards.std(1, keepdim=True) + 1e-4
-        )
+        advantages = (
+            aggregated_rewards_bg - aggregated_rewards_bg.mean(1, keepdim=True)
+        ) / (aggregated_rewards_bg.std(1, keepdim=True) + 1e-4)
+        aggregated_rewards = aggregated_rewards_bg.reshape(batch_size * grpo_size)
+        successes = successes_bg.reshape(batch_size * grpo_size)
+        reward_components = reward_components_bg.reshape(batch_size * grpo_size, -1)
         advantages = advantages.reshape(batch_size * grpo_size)  # flatten
 
         del responses
@@ -909,9 +953,9 @@ class LoRAGRPORecipeDistributed(FTRecipeInterface):
             query_responses=query_responses,
             logprobs=logprobs,
             ref_logprobs=ref_logprobs,
-            rewards=aggregated_rewards.reshape(batch_size * grpo_size),
-            reward_components=reward_components.reshape(batch_size * grpo_size, -1),
-            successes=successes.reshape(batch_size * grpo_size),
+            rewards=aggregated_rewards,
+            reward_components=reward_components,
+            successes=successes,
             advantages=advantages,
             masks=masks,
             position_ids=position_ids,
