@@ -192,7 +192,7 @@ def lora_llama3_1(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): LoRA dropout probability. Default: 0.0
-        lora_type: type of LoRA transformer decoder. Default: "lora". Options are "lora", "dora", "dora_cache".
+        lora_type (str): Type of LoRA layer to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base: (bool): Whether to quantize base model weights or not. Only applied to base
             weights within linear layers LoRA is applied to. The final output linear projection is not
             supported for quantization currently.
@@ -328,7 +328,7 @@ def lora_llama3_attention(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): LoRA dropout probability. Default: 0.0
-        lora_type: type of LoRA transformer decoder. Default: "lora". Options are "lora", "dora", "dora_cache".
+        lora_type (str): Type of LoRA layer to use. Options are ``{"lora", "dora", "dora_cache"}``.
         quantize_base (bool): Whether to quantize base model parameters for linear layers
             LoRA is being applied to. Default is ``False``.
 

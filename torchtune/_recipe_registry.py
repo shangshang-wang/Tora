@@ -75,6 +75,10 @@ _ALL_RECIPES = [
             Config(name="qwen3_vl/4B_lora_grpo", file_path="qwen3_vl/4B_lora_grpo.yaml"),
             Config(name="qwen3_vl/8B_lora_grpo", file_path="qwen3_vl/8B_lora_grpo.yaml"),
 
+            Config(name="qwen3_vl/2B_lora_grpo", file_path="qwen3_vl/2B_lora_grpo.yaml"),
+            Config(name="qwen3_vl/4B_lora_grpo", file_path="qwen3_vl/4B_lora_grpo.yaml"),
+            Config(name="qwen3_vl/8B_lora_grpo", file_path="qwen3_vl/8B_lora_grpo.yaml"),
+
             Config(name="qwen2_5/1.5B_qlora_grpo", file_path="qwen2_5/1.5B_qlora_grpo.yaml"),
             Config(name="qwen2_5/3B_qlora_grpo", file_path="qwen2_5/3B_qlora_grpo.yaml"),
             Config(name="qwen2_5/7B_qlora_grpo", file_path="qwen2_5/7B_qlora_grpo.yaml"),
@@ -88,6 +92,7 @@ _ALL_RECIPES = [
             Config(name="qwen3/4B_qlora_grpo", file_path="qwen3/4B_qlora_grpo.yaml"),
             Config(name="qwen3/8B_qlora_grpo", file_path="qwen3/8B_qlora_grpo.yaml"),
             Config(name="qwen3/14B_qlora_grpo", file_path="qwen3/14B_qlora_grpo.yaml"),
+
             Config(name="qwen3_vl/2B_qlora_grpo", file_path="qwen3_vl/2B_qlora_grpo.yaml"),
             Config(name="qwen3_vl/4B_qlora_grpo", file_path="qwen3_vl/4B_qlora_grpo.yaml"),
             Config(name="qwen3_vl/8B_qlora_grpo", file_path="qwen3_vl/8B_qlora_grpo.yaml"),
