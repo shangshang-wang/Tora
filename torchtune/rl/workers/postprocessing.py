@@ -255,8 +255,11 @@ class PostProcessingWorker:
                     response_ids[i].tolist(), skip_special_tokens=False
                 )
                 stripped = decoded.lstrip()
-                if not stripped.startswith("<think>"):
-                    decoded = f"<think>{decoded}"
+                think_idx = stripped.find("<think>")
+                if think_idx != -1:
+                    decoded = stripped[think_idx:]
+                else:
+                    decoded = f"<think>{stripped}"
                 responses_str.append(decoded)
             reward_outputs: list[RewardOutput] = []
             for reward_fn in self.reward_functions:
