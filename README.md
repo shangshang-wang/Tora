@@ -366,6 +366,8 @@ git clone https://github.com/shangshang-wang/Tora.git && cd Tora
 pip install torch torchvision torchao
 pip install -e .
 pip install wandb math_verify
+
+pip install -e .[async_rl] # For async RL training
 ```
 
 Download a model from the Hugging Face Hub.
