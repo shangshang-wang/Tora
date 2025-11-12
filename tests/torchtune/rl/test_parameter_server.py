@@ -64,7 +64,7 @@ class DummyTrainer:
 @remote(num_cpus=1, num_gpus=1)
 class DummyCollector:
     def __init__(self, weight_receiver, tp_size):
-        from torchtune.dev.rl.workers.datacollectors import VLLMWorkerWrapper
+        from torchtune.rl.workers.datacollectors import VLLMWorkerWrapper
         from vllm import LLM
         from vllm.model_executor.layers.vocab_parallel_embedding import (
             VocabParallelEmbedding,
@@ -136,7 +136,7 @@ inference:
     @rl_test()
     def test_receive_from_trainer(self) -> None:
         import ray
-        from torchtune.dev.rl.workers import VLLMParameterServer
+        from torchtune.rl.workers import VLLMParameterServer
 
         ray.init(num_cpus=10, num_gpus=2)
 
@@ -176,7 +176,7 @@ inference:
         ray.init(num_cpus=10, num_gpus=2 + tp_size)
 
         try:
-            from torchtune.dev.rl.workers import (
+            from torchtune.rl.workers import (
                 VLLMHFWeightUpdateReceiver,
                 VLLMParameterServer,
             )

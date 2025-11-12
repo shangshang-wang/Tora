@@ -80,7 +80,7 @@ def lora_llama3_2_1b(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
     tie_word_embeddings: bool = True,
 ) -> TransformerDecoder:
@@ -101,8 +101,7 @@ def lora_llama3_2_1b(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): dropout probability for the low-rank approximation
-        use_dora (bool): Decompose the LoRA weight into magnitude and direction, as
-            introduced in "DoRA: Weight-Decomposed Low-Rank Adaptation" (https://arxiv.org/abs/2402.09353).
+        lora_type (str): "lora", "dora", or "dora_cache"
         quantize_base (bool): Whether to quantize base model weights
         tie_word_embeddings (bool): whether the model's input and output word embeddings should be tied.
 
@@ -127,7 +126,7 @@ def lora_llama3_2_1b(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
         tie_word_embeddings=tie_word_embeddings,
     )
@@ -140,7 +139,7 @@ def lora_llama3_2_3b(
     lora_rank: int = 8,
     lora_alpha: float = 16,
     lora_dropout: float = 0.0,
-    use_dora: bool = False,
+    lora_type: str = "lora", # "lora", "dora", "dora_cache"
     quantize_base: bool = False,
     tie_word_embeddings: bool = True,
 ) -> TransformerDecoder:
@@ -161,8 +160,7 @@ def lora_llama3_2_3b(
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): dropout probability for the low-rank approximation
-        use_dora (bool): Decompose the LoRA weight into magnitude and direction, as
-            introduced in "DoRA: Weight-Decomposed Low-Rank Adaptation" (https://arxiv.org/abs/2402.09353).
+        lora_type (str): "lora", "dora", or "dora_cache"
         quantize_base (bool): Whether to quantize base model weights
         tie_word_embeddings (bool): whether the model's input and output word embeddings should be tied.
 
@@ -187,7 +185,7 @@ def lora_llama3_2_3b(
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
-        use_dora=use_dora,
+        lora_type=lora_type,
         quantize_base=quantize_base,
         tie_word_embeddings=tie_word_embeddings,
     )

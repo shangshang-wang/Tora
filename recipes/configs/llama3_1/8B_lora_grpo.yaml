@@ -1,21 +1,21 @@
 # Config for sync multi-node GRPO in lora_grpo_distributed.py
-# using a Qwen-7B Base model (which is known to train quickly on this task).
+# using an Llama3.1 8B Instruct model (which is known to train quickly on this task).
 #
 # Also check out the async implementation of this workflow in this directory.
 #
 # This config assumes that you've run the following command before launching
 # this run:
-#   tune download Qwen/Qwen2.5-7B --output-dir /tmp/Qwen2.5-7B
+#   tune download meta-llama/Llama-3.1-8B-Instruct --output-dir /tmp/Llama-3.1-8B-Instruct
 #
-# To launch on 2 devices, run the following command from root:
-# tune run --nproc_per_node 2 lora_grpo_distributed --config qwen2_5/7B_lora_grpo
+# To launch on 4 devices, run the following command from root:
+# tune run --nproc_per_node 4 lora_grpo_distributed --config llama3_1/8B_lora_grpo
 #
 # You can add specific overrides through the command line. For example
 # to override the checkpointer directory while launching training
 # you can run:
-#   tune run --nproc_per_node 2 lora_grpo_distributed --config qwen2_5/7B_lora_grpo checkpointer.checkpoint_dir=<YOUR_CHECKPOINT_DIR>
+#   tune run --nproc_per_node 4 lora_grpo_distributed --config llama3_1/8B_lora_grpo checkpointer.checkpoint_dir=<YOUR_CHECKPOINT_DIR>
 #
-# This config works best when the model is being fine-tuned on 2+ GPUs.
+# This config works best when the model is being fine-tuned on 4+ GPUs.
 #
 # Furthermore, you can launch it on multiple nodes by going to recipes/dev/ and using
 #  sbatch multinode_grpo.sbatch
@@ -25,13 +25,12 @@ base_output_dir: ${oc.env:BASE_OUTPUT_DIR}
 name: ${oc.env:CONFIG_NAME}
 
 output_dir: ${base_output_dir}/${name}
-base_model_path: ${base_model_dir}/Qwen2.5-7B  # Use this to train from the slightly trained SFT model
+base_model_path: ${base_model_dir}/Llama-3.1-8B-Instruct  # Use this to train from the slightly trained SFT model
 
 # Tokenizer
 tokenizer:
-  _component_: torchtune.models.qwen2_5.qwen2_5_tokenizer
-  path: ${base_model_dir}/Qwen2.5-7B/vocab.json
-  merges_file: ${base_model_dir}/Qwen2.5-7B/merges.txt
+  _component_: torchtune.models.llama3.llama3_tokenizer
+  path: ${base_model_dir}/Llama-3.1-8B-Instruct/original/tokenizer.model
   max_seq_len: 1024
 
 # Dataset
@@ -43,7 +42,7 @@ shuffle: False
 
 # Model Arguments
 model:
-  _component_: torchtune.models.qwen2_5.lora_qwen2_5_7b_base
+  _component_: torchtune.models.llama3_1.lora_llama3_1_8b
   lora_attn_modules: ['q_proj', 'v_proj', 'output_proj']
   apply_lora_to_mlp: True
   apply_lora_to_output: False
@@ -52,6 +51,7 @@ model:
   lora_dropout: 0.0
   lora_type: "lora" # "lora", "dora", "dora_cache"
 
+
 checkpointer:
   _component_: torchtune.training.FullModelHFCheckpointer
   checkpoint_dir: ${base_model_path}
@@ -59,11 +59,11 @@ checkpointer:
     model-00001-of-00004.safetensors,
     model-00002-of-00004.safetensors,
     model-00003-of-00004.safetensors,
-    model-00004-of-00004.safetensors,
+    model-00004-of-00004.safetensors
   ]
   recipe_checkpoint: null
   output_dir: ${output_dir}
-  model_type: QWEN2
+  model_type: LLAMA3
 
 
 ref_checkpointer:
@@ -73,13 +73,11 @@ ref_checkpointer:
     model-00001-of-00004.safetensors,
     model-00002-of-00004.safetensors,
     model-00003-of-00004.safetensors,
-    model-00004-of-00004.safetensors,
+    model-00004-of-00004.safetensors
   ]
   recipe_checkpoint: null
   output_dir: ${output_dir}/ref  # shouldn't be used?
-  model_type: QWEN2
-fsdp_reshard_after_forward: False
-
+  model_type: LLAMA3
 
 # Fine-tuning arguments
 batch_size: 2
@@ -93,7 +91,7 @@ ppo_epochs: 1
 clip_grad_norm: 1.0
 
 epochs: 1
-#early_stop_steps: 1000
+early_stop_steps: 400
 save_every_n_steps: 200
 save_every_n_epochs: 1
 resume_from_checkpoint: False
@@ -106,7 +104,7 @@ lr_scheduler:
   num_warmup_steps: 50
 loss:
   _component_: torchtune.rl.loss.GRPOSimpleLoss
-  kl_coeff: 0.01
+  kl_coeff: 0.0d1
   epsilon: 0.2
 
 # Training env
@@ -122,12 +120,12 @@ dtype: bf16
 reward_functions:
     - _component_: torchtune.rl.rewards.FormattedMathCorrectnessReward
       answer_tag: answer
-      positive_reward: 1.0
+      positive_reward: 10.0
       negative_reward: 0.0
     - _component_: torchtune.rl.rewards.ThinkingAnswerFormattingReward
       think_tag: think
       answer_tag: answer
-      positive_reward: 100.0
+      positive_reward: 1.0
       negative_reward: 0.0
 
 # Logging

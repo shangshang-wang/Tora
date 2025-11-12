@@ -36,7 +36,7 @@ tokenizer:
 
 # Dataset
 dataset:
-  _component_: torchtune.dev.grpo.gsm8k.gsm8k_dataset
+  _component_: torchtune.rl.gsm8k.gsm8k_dataset
   partition: 1-9/10
 seed: null
 shuffle: False
@@ -107,9 +107,6 @@ ref_checkpointer:
 fsdp_reshard_after_forward: False
 
 
-resume_from_checkpoint: False
-save_every_n_epochs: 1
-
 # Fine-tuning arguments
 batch_size: 2
 grpo_samples: 4
@@ -119,12 +116,13 @@ top_k: null
 temperature: 1.0
 
 ppo_epochs: 1
-
-num_steps: 200
-
 clip_grad_norm: 1.0
 
-epochs: 10
+epochs: 1
+#early_stop_steps: 1000
+save_every_n_steps: 200
+save_every_n_epochs: 1
+resume_from_checkpoint: False
 optimizer:
   _component_: torch.optim.AdamW
   lr: 1e-4
@@ -133,7 +131,7 @@ lr_scheduler:
   _component_: torchtune.training.lr_schedulers.get_cosine_schedule_with_warmup
   num_warmup_steps: 50
 loss:
-  _component_: torchtune.dev.grpo.loss.GRPOSimpleLoss
+  _component_: torchtune.rl.loss.GRPOSimpleLoss
   kl_coeff: 0.01
   epsilon: 0.2
 
@@ -148,14 +146,14 @@ compile: False  # pytorch compile, set to true for better perf/memory
 dtype: bf16
 
 reward_functions:
-    - _component_: torchtune.dev.rl.rewards.FormattedMathCorrectnessReward
-      answer_tag: answer
-      positive_reward: 10.0
-      negative_reward: 0.0
-    - _component_: torchtune.dev.rl.rewards.ThinkingAnswerFormattingReward
-      think_tag: think
+    - _component_: torchtune.rl.rewards.FormattedMathCorrectnessReward
       answer_tag: answer
       positive_reward: 1.0
+      negative_reward: 0.0
+    - _component_: torchtune.rl.rewards.ThinkingAnswerFormattingReward
+      think_tag: think
+      answer_tag: answer
+      positive_reward: 100.0
       negative_reward: 0.0
 
 # Logging

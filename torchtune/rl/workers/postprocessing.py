@@ -12,8 +12,8 @@ import torchtune.training as training
 from omegaconf import DictConfig
 
 from torchtune import config, generation, rlhf, utils
-from torchtune.dev.rl.datatypes import Trajectory
-from torchtune.dev.rl.rewards import Reward, RewardOutput
+from torchtune.rl.datatypes import Trajectory
+from torchtune.rl.rewards import Reward, RewardOutput
 
 log = utils.get_logger("DEBUG")
 
@@ -249,10 +249,18 @@ class PostProcessingWorker:
 
             # Compute rewards
             response_ids = responses.reshape(batch_size * group_size, -1)
-            responses_str = [
-                self._tokenizer.decode(response_ids[i].tolist())
-                for i in range(batch_size * group_size)
-            ]
+            responses_str = []
+            for i in range(batch_size * group_size):
+                decoded = self._tokenizer.decode(
+                    response_ids[i].tolist(), skip_special_tokens=False
+                )
+                stripped = decoded.lstrip()
+                think_idx = stripped.find("<think>")
+                if think_idx != -1:
+                    decoded = stripped[think_idx:]
+                else:
+                    decoded = f"<think>{stripped}"
+                responses_str.append(decoded)
             reward_outputs: list[RewardOutput] = []
             for reward_fn in self.reward_functions:
                 reward_outputs.append(reward_fn(response_ids, responses_str, answers))

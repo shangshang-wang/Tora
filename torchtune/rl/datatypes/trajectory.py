@@ -6,7 +6,7 @@
 
 import torch
 from tensordict import TensorClass
-from torchtune.dev.rl.rewards import RewardOutput
+from torchtune.rl.rewards import RewardOutput
 
 
 class Trajectory(TensorClass["nocast"]):

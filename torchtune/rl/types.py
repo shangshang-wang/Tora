@@ -5,7 +5,8 @@
 # LICENSE file in the root directory of this source tree.
 
 
-from typing import NamedTuple, Optional
+from collections.abc import Sequence as _SequenceABC
+from typing import Any, Dict, NamedTuple, Optional, Sequence
 
 import torch
 
@@ -40,6 +41,7 @@ class GRPOTrajectory(NamedTuple):
     position_ids: torch.Tensor = None  # [B*G, P+L]
     response_padding_masks: torch.Tensor = None  # [B*G, L]
     seq_lens: torch.Tensor = None  # [B*G]
+    answers: Optional[Sequence[str]] = None  # [B*G]
 
 
 class GRPOStats(NamedTuple):
@@ -62,4 +64,74 @@ class GRPOStats(NamedTuple):
     ratios: torch.Tensor
     clipfrac: torch.Tensor
     approx_policy_kls: torch.Tensor
-    # metadata: Optional[dict] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
+def _first_non_none(values: Sequence[Any]) -> Any:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def concat_grpo_trajectories(
+    trajectories: Sequence[GRPOTrajectory],
+) -> GRPOTrajectory:
+    """
+    Concatenate a sequence of ``GRPOTrajectory`` objects along the batch dimension while
+    preserving optional non-tensor fields.
+    """
+    if not trajectories:
+        raise ValueError("Cannot concatenate an empty sequence of GRPOTrajectories.")
+
+    concatenated: Dict[str, Any] = {}
+    for field in GRPOTrajectory._fields:
+        values = [getattr(traj, field) for traj in trajectories]
+        exemplar = _first_non_none(values)
+        if exemplar is None:
+            concatenated[field] = None
+            continue
+
+        if isinstance(exemplar, torch.Tensor):
+            concatenated[field] = torch.cat(
+                [value for value in values if value is not None], dim=0
+            )
+        elif isinstance(exemplar, _SequenceABC) and not isinstance(
+            exemplar, (str, bytes, torch.Tensor)
+        ):
+            combined = []
+            for value in values:
+                if value is None:
+                    continue
+                combined.extend(value)
+            concatenated[field] = combined
+        else:
+            concatenated[field] = exemplar
+
+    return GRPOTrajectory(**concatenated)
+
+
+def stack_grpo_stats(stats_list: Sequence[GRPOStats]) -> GRPOStats:
+    """
+    Stack a sequence of ``GRPOStats`` objects along a new dimension, ignoring optional
+    metadata fields that cannot be stacked.
+    """
+    if not stats_list:
+        raise ValueError("Cannot stack an empty sequence of GRPOStats.")
+
+    stacked: Dict[str, Any] = {}
+    for field in GRPOStats._fields:
+        values = [getattr(stats, field) for stats in stats_list]
+        exemplar = _first_non_none(values)
+        if exemplar is None:
+            stacked[field] = None
+            continue
+
+        if isinstance(exemplar, torch.Tensor):
+            stacked[field] = torch.stack(
+                [value for value in values if value is not None], dim=0
+            )
+        else:
+            stacked[field] = exemplar
+
+    return GRPOStats(**stacked)

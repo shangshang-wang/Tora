@@ -20,9 +20,14 @@ from torchdata.stateful_dataloader.sampler import StatefulDistributedSampler
 from torchtune import config, generation, modules, rlhf, training, utils
 from torchtune.config._utils import _get_component_from_path
 from torchtune.datasets import ConcatDataset
-from torchtune.dev.rl.generation import generate
-from torchtune.dev.rl.rewards import batched_rewards
-from torchtune.dev.rl.types import GRPOStats, GRPOTrajectory
+from torchtune.rl.generation import generate
+from torchtune.rl.rewards import batched_rewards
+from torchtune.rl.types import (
+    GRPOStats,
+    GRPOTrajectory,
+    concat_grpo_trajectories,
+    stack_grpo_stats,
+)
 from torchtune.modules import local_kv_cache
 from torchtune.recipe_interfaces import FTRecipeInterface
 from torchtune.training import disable_dropout, DummyProfiler, PROFILER_KEY
@@ -33,6 +38,8 @@ log = utils.get_logger("DEBUG")
 
 import torch._dynamo.config as dynamo_config
 dynamo_config.recompile_limit = 100
+
+CHECKPOINT_STEPS_RUN_KEY = "dataloader_steps_run"
 
 
 class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
@@ -67,6 +74,11 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         )
         self._compile = cfg.get("compile", False)
 
+        self._save_every_n_steps = cfg.get("save_every_n_steps", None)
+        if self._save_every_n_steps is not None:
+            if self._save_every_n_steps <= 0:
+                raise ValueError("save_every_n_steps must be a positive integer.")
+
         # Recipe state attributes
         self.seed = training.set_seed(seed=cfg.seed)
         self.total_epochs = cfg.epochs
@@ -75,6 +87,9 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         self._total_steps = 0
         self._epochs_run = 0
         self._rng = torch.Generator(self._device).manual_seed(self.seed)
+        self._restored_steps_run: Optional[int] = None
+        self._restored_global_step: Optional[int] = None
+        self._restored_steps_per_epoch: Optional[int] = None
 
     def load_checkpoint(self, cfg_checkpointer: DictConfig) -> dict[str, Any]:
         """
@@ -95,6 +110,9 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         try:
             self._epochs_run = ckpt_dict[training.EPOCHS_KEY]
             self._rng.set_state(ckpt_dict[training.RNG_KEY])
+            self._restored_global_step = ckpt_dict.get(training.STEPS_KEY, None)
+            self._restored_steps_run = ckpt_dict.get(CHECKPOINT_STEPS_RUN_KEY, None)
+            self._restored_steps_per_epoch = ckpt_dict.get(training.MAX_STEPS_KEY, None)
 
             # on mismatch, warn the user and prevent the override
             if self.seed != ckpt_dict[training.SEED_KEY]:
@@ -190,7 +208,7 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         # sampler and dataloader depend on the tokenizer and loss_fn and should be
         # setup after both of these are initialized
         collate_name = cfg.get(
-            "collate_fn", "torchtune.dev.grpo.data.padded_collate_rl"
+            "collate_fn", "torchtune.rl.data.padded_collate_rl"
         )
         self._dataloader = self._setup_data(
             cfg_dataset=cfg.dataset,
@@ -212,7 +230,25 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         # This value is used for logging and tracking
         # training state. The computation should happen after the dataloader has been setup
         self._steps_per_epoch = len(self._dataloader)
-        self.global_step = self._epochs_run * self._steps_per_epoch
+        if (
+            self._restored_steps_per_epoch is not None
+            and self._restored_steps_per_epoch != self._steps_per_epoch
+        ):
+            warn(
+                message=(
+                    "Steps per epoch derived from the checkpoint "
+                    f"({self._restored_steps_per_epoch}) does not match the current "
+                    f"value ({self._steps_per_epoch}). Using the current value."
+                )
+            )
+        if self._restored_steps_run is not None:
+            self._steps_run = self._restored_steps_run
+        else:
+            self._steps_run = self._epochs_run * self._steps_per_epoch
+        if self._restored_global_step is not None:
+            self.global_step = self._restored_global_step
+        else:
+            self.global_step = self._epochs_run * self._steps_per_epoch
 
         # Setup lr scheduler
         self._lr_scheduler = self._setup_lr_scheduler(
@@ -234,20 +270,23 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         self._forward_batch_size = cfg.forward_batch_size
 
         self._ppo_epochs = cfg.ppo_epochs
-        self._save_every_n_epochs = cfg.save_every_n_epochs
-        self._total_steps = cfg.num_steps
+        self._save_every_n_epochs = cfg.get("save_every_n_epochs", 1)
+        if self._save_every_n_epochs <= 0:
+            raise ValueError("save_every_n_epochs must be a positive integer.")
+        self._total_steps = cfg.get("early_stop_steps", None)
 
-        # Parse reward function names from the config for named logging
-        self.reward_names = []
+        # Parse and instantiate reward functions from the config for named logging and execution
+        self.reward_names: list[str] = []
+        self.reward_functions = []
         if "reward_functions" in cfg and isinstance(cfg.reward_functions, (ListConfig, list)):
             for rf_cfg in cfg.reward_functions:
-                # Extracts the class name, e.g., "FormattedMathCorrectnessReward"
                 component_path = rf_cfg.get("_component_", "")
                 if component_path:
-                    class_name = component_path.split('.')[-1]
+                    class_name = component_path.split(".")[-1]
                     self.reward_names.append(class_name)
+                self.reward_functions.append(config.instantiate(rf_cfg))
 
-            utils.log_rank_zero(log, f"Found reward names for logging: {self.reward_names}")
+            utils.log_rank_zero(log, f"Configured reward functions: {self.reward_names}")
 
         if cfg.get("stop_token_ids", False):
             stop_token_ids = cfg.stop_token_ids
@@ -491,14 +530,27 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         )
         if dataloader_state_dict is not None:
             dataloader.load_state_dict(dataloader_state_dict)
-            # B/c we currently only save at epoch boundaries, if we cut the previous epoch short
-            # we need to force the dataloader to finish the last iteration before it's actually used
-            list(dataloader)
+            should_drain = True
+            if self._resume_from_checkpoint:
+                steps_per_epoch = len(dataloader)
+                restored_steps_run = self._restored_steps_run
+                if (
+                    restored_steps_run is not None
+                    and steps_per_epoch > 0
+                ):
+                    expected_steps_before_current_epoch = self._epochs_run * steps_per_epoch
+                    steps_into_epoch = restored_steps_run - expected_steps_before_current_epoch
+                    should_drain = steps_into_epoch <= 0
+            if should_drain:
+                # Draining ensures we advance to the next epoch when resuming from a boundary checkpoint.
+                list(dataloader)
         return dataloader
 
     def save_checkpoint(
         self,
         epoch: int,
+        *,
+        is_final: bool = False,
     ) -> None:
         """
         Checkpoint the state of the recipe. The constructed checkpoint state dict
@@ -513,7 +565,8 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         # final dict passed onto the checkpointer
         checkpoint_dict = {}
 
-        intermediate_checkpoint = epoch + 1 < self.total_epochs
+        intermediate_checkpoint = not is_final
+        epoch = max(epoch, 0)
 
         utils.log_rank_zero(
             log,
@@ -550,31 +603,39 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         else:
             opt_state_dict = None
 
-        # Now that we have the model and opt state dict, create the actual checkpoint dict
-        # to be sent to the checkpointer and ultimately written to file
-
         if self._is_rank_zero:
             start = time.perf_counter()
             checkpoint_dict.update({training.MODEL_KEY: cpu_state_dict})
 
-            # if training is in-progress, checkpoint the optimizer state and recipe state
-            # as well.
+            checkpoint_dict.update(
+                {
+                    training.SEED_KEY: self.seed,
+                    training.EPOCHS_KEY: self._epochs_run,
+                    training.TOTAL_EPOCHS_KEY: self.total_epochs,
+                    training.RNG_KEY: self._rng.get_state(),
+                    training.STEPS_KEY: self.global_step,
+                    training.MAX_STEPS_KEY: self._steps_per_epoch,
+                    CHECKPOINT_STEPS_RUN_KEY: self._steps_run,
+                }
+            )
+
+            # if training is in-progress, checkpoint the optimizer state and dataloader state
             if intermediate_checkpoint:
                 checkpoint_dict.update(
                     {
                         training.OPT_KEY: opt_state_dict,
-                        training.SEED_KEY: self.seed,
-                        training.EPOCHS_KEY: self._epochs_run,
-                        training.TOTAL_EPOCHS_KEY: self.total_epochs,
-                        training.RNG_KEY: self._rng.get_state(),
                         training.DATALOADER_KEY: self._dataloader.state_dict(),
                     }
                 )
 
+            dir_prefix = "step" if self._save_every_n_steps is not None else "epoch"
+            step_value: Optional[int] = self._steps_run if dir_prefix == "step" else None
             self._checkpointer.save_checkpoint(
                 checkpoint_dict,
                 epoch=epoch,
                 intermediate_checkpoint=intermediate_checkpoint,
+                dir_prefix=dir_prefix,
+                step=step_value,
             )
             log.info(f"Saving checkpoint took {time.perf_counter() - start:.2f} secs")
 
@@ -681,25 +742,68 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         )
 
         # Do some reward modeling
-        # responses :: [B x G, L]
-        responses = responses.reshape(batch_size, grpo_size, -1)  # [B, G, L]
-        rewards, successes, _ = batched_rewards(self._tokenizer, responses, answers, self._device)
-        rewards = rewards.to(self._device)  # [B, G]
-        successes = successes.to(self._device)  # [B, G]
+        response_ids = responses.reshape(batch_size * grpo_size, -1)  # [B * G, L]
+        if self.reward_functions:
+            answers_expanded = [
+                answer for answer in answers for _ in range(grpo_size)
+            ]
+            if len(answers_expanded) != response_ids.shape[0]:
+                raise ValueError(
+                    "Number of answers does not match the number of generated responses."
+                )
 
-        # TODO Create equal weights for all reward functions
-        reward_components = rewards.clone()
+            responses_str = []
+            for i in range(response_ids.shape[0]):
+                decoded = self._tokenizer.decode(
+                    response_ids[i].tolist(), skip_special_tokens=False
+                )
+                stripped = decoded.lstrip()
+                think_idx = stripped.find("<think>")
+                if think_idx != -1:
+                    decoded = stripped[think_idx:]
+                else:
+                    decoded = f"<think>{stripped}"
+                responses_str.append(decoded)
 
-        num_reward_funcs = rewards.shape[-1]
-        reward_weights = torch.ones(num_reward_funcs, device=self._device) / num_reward_funcs  # [num_reward_funcs]
-        aggregated_rewards = (rewards * reward_weights).sum(dim=-1)  # [B, G]
-        successes = successes.mean(dim=-1)  # [B, G]
+            reward_outputs = [
+                reward_fn(response_ids, responses_str, answers_expanded)
+                for reward_fn in self.reward_functions
+            ]
+
+            reward_components_bg = torch.stack(
+                [reward_output.total_reward for reward_output in reward_outputs],
+                dim=-1,
+            ).to(self._device)
+            successes_bg = torch.stack(
+                [reward_output.successes for reward_output in reward_outputs], dim=-1
+            ).to(self._device)
+            reward_components_bg = reward_components_bg.reshape(
+                batch_size, grpo_size, -1
+            )
+            successes_bg = successes_bg.reshape(batch_size, grpo_size, -1)
+        else:
+            responses = response_ids.reshape(batch_size, grpo_size, -1)  # [B, G, L]
+            rewards_bg, successes_bg, _ = batched_rewards(
+                self._tokenizer, responses, answers, self._device
+            )
+            reward_components_bg = rewards_bg.to(self._device)
+            successes_bg = successes_bg.to(self._device)
+
+        num_reward_funcs = reward_components_bg.shape[-1]
+        reward_weights = torch.ones(num_reward_funcs, device=self._device) / max(
+            num_reward_funcs, 1
+        )
+        aggregated_rewards_bg = (reward_components_bg * reward_weights).sum(dim=-1)
+        successes_bg = successes_bg.mean(dim=-1)
 
         # Use the aggregated reward for advantage calculation
-        advantages = (aggregated_rewards - aggregated_rewards.mean(1, keepdim=True)) / (
-            aggregated_rewards.std(1, keepdim=True) + 1e-4
-        )
-        advantages = advantages.reshape(batch_size * grpo_size)  # flatten
+        advantages = (
+            aggregated_rewards_bg - aggregated_rewards_bg.mean(1, keepdim=True)
+        ) / (aggregated_rewards_bg.std(1, keepdim=True) + 1e-4)
+        aggregated_rewards = aggregated_rewards_bg.reshape(batch_size * grpo_size)
+        successes = successes_bg.reshape(batch_size * grpo_size)
+        reward_components = reward_components_bg.reshape(batch_size * grpo_size, -1)
+        advantages = advantages.reshape(batch_size * grpo_size)
 
         del responses
         torch.cuda.empty_cache()
@@ -712,9 +816,9 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
             query_responses=query_responses,
             logprobs=logprobs,
             ref_logprobs=ref_logprobs,
-            rewards=aggregated_rewards.reshape(batch_size * grpo_size),
-            reward_components=reward_components.reshape(batch_size * grpo_size, -1),
-            successes=successes.reshape(batch_size * grpo_size),
+            rewards=aggregated_rewards,
+            reward_components=reward_components,
+            successes=successes,
             advantages=advantages,
             masks=masks,
             position_ids=position_ids,
@@ -751,7 +855,7 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
                     self.generate_trajectory(batch_input_ids, batch_answers)
                 )
                 torch.cuda.empty_cache()
-        return GRPOTrajectory(*map(torch.cat, zip(*trajectories)))
+        return concat_grpo_trajectories(trajectories)
 
     def grpo_step(
         self,
@@ -836,94 +940,125 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         grad_norm = None
 
         training_completed = False
+        interrupted = False
         self._profiler.start()
-        # self.epochs_run should be non-zero when we're resuming from a checkpoint
-        for curr_epoch in range(self._epochs_run, self.total_epochs):
-            pbar = tqdm(total=self._steps_per_epoch, disable=not self._is_rank_zero)
-            self._dataloader.sampler.set_epoch(curr_epoch)
-            for idx, batch in enumerate(self._dataloader):
-                # Start tracking CUDA memory for active steps for just the first epoch
-                if (
-                    self._is_rank_zero
-                    and curr_epoch == 0
-                    and self.profiler_profile_memory
-                    and idx == self.profiler_wait_steps + self.profiler_warmup_steps
-                    and self._device.type == "cuda"
-                ):
-                    torch.cuda.memory._record_memory_history()
 
-                tokens = batch["tokens"]  # type: ignore
-                answers = batch["answers"]  # type: ignore
-                tokens = tokens.to(self._device)  # [B, P]
+        # Global target
+        total_target = self.total_epochs * self._steps_per_epoch
+        if self._total_steps:  # cfg.early_stop_steps may stop earlier
+            total_target = min(total_target, self._total_steps)
 
-                _, context_length = tokens.shape
+        pbar = tqdm(total=total_target, disable=not self._is_rank_zero)
+        if self._steps_run:       # resume support
+            pbar.update(self._steps_run)
 
-                trajectory = self.generate_trajectory_batched(tokens, answers)
-                torch.distributed.barrier()
+        last_epoch = max(self._epochs_run - 1, 0)
+        try:
+            # self.epochs_run should be non-zero when we're resuming from a checkpoint
+            for curr_epoch in range(self._epochs_run, self.total_epochs):
+                last_epoch = curr_epoch
+                self._dataloader.sampler.set_epoch(curr_epoch)
+                for idx, batch in enumerate(self._dataloader):
+                    # Start tracking CUDA memory for active steps for just the first epoch
+                    if (
+                        self._is_rank_zero
+                        and curr_epoch == 0
+                        and self.profiler_profile_memory
+                        and idx == self.profiler_wait_steps + self.profiler_warmup_steps
+                        and self._device.type == "cuda"
+                    ):
+                        torch.cuda.memory._record_memory_history()
 
-                grpo_stats: list[GRPOStats] = []
-                for _ in range(self._ppo_epochs):
-                    step_stats = self.grpo_step(trajectory, context_length)
+                    tokens = batch["tokens"]  # type: ignore
+                    answers = batch["answers"]  # type: ignore
+                    tokens = tokens.to(self._device)  # [B, P]
 
-                    grpo_stats.append(step_stats)
+                    _, context_length = tokens.shape
 
-                    if self._clip_grad_norm is not None:
-                        grad_norm = torch.nn.utils.clip_grad_norm_(
-                            self._model.parameters(),
-                            max_norm=float(self._clip_grad_norm),
+                    trajectory = self.generate_trajectory_batched(tokens, answers)
+                    torch.distributed.barrier()
+
+                    grpo_stats: list[GRPOStats] = []
+                    for _ in range(self._ppo_epochs):
+                        step_stats = self.grpo_step(trajectory, context_length)
+
+                        grpo_stats.append(step_stats)
+
+                        if self._clip_grad_norm is not None:
+                            grad_norm = torch.nn.utils.clip_grad_norm_(
+                                self._model.parameters(),
+                                max_norm=float(self._clip_grad_norm),
+                            )
+                        torch.distributed.barrier()
+                        self._optimizer.step()
+                        self._optimizer.zero_grad(set_to_none=True)
+                        torch.distributed.barrier()
+
+                        self.global_step += 1
+
+                        if self._lr_scheduler is not None:
+                            self._lr_scheduler.step()
+
+                    # Stop tracking CUDA memory now that active steps are complete
+                    if (
+                        self._is_rank_zero
+                        and curr_epoch == 0
+                        and self.profiler_profile_memory
+                        and idx
+                        == self.profiler_wait_steps
+                        + self.profiler_warmup_steps
+                        + self.profiler_active_steps
+                        and self._device.type == "cuda"
+                    ):
+                        torch.cuda.memory._record_memory_history(enabled=None)
+
+                    self._steps_run += 1
+                    if self._save_every_n_steps is not None:
+                        if self._steps_run % self._save_every_n_steps == 0:
+                            self.save_checkpoint(curr_epoch)
+
+                    if self._steps_run % self._log_every_n_steps == 0:
+                        extra_metrics = {}
+                        extra_metrics["lr"] = get_lr(self._optimizer)
+                        if grad_norm is not None:
+                            extra_metrics["grad_norm"] = grad_norm
+
+                        self.log_metrics(
+                            trajectory,
+                            stack_grpo_stats(grpo_stats),
+                            **extra_metrics,
                         )
-                    torch.distributed.barrier()
-                    self._optimizer.step()
-                    self._optimizer.zero_grad(set_to_none=True)
-                    torch.distributed.barrier()
 
-                    self.global_step += 1
+                    self.cleanup_after_step(trajectory, grpo_stats)
+                    self._profiler.step()
 
-                    if self._lr_scheduler is not None:
-                        self._lr_scheduler.step()
+                    pbar.update(1)
 
-                # Stop tracking CUDA memory now that active steps are complete
+                    if self._total_steps and self._steps_run >= self._total_steps:
+                        training_completed = True
+                        break
+
+                self._epochs_run += 1
                 if (
-                    self._is_rank_zero
-                    and curr_epoch == 0
-                    and self.profiler_profile_memory
-                    and idx
-                    == self.profiler_wait_steps
-                    + self.profiler_warmup_steps
-                    + self.profiler_active_steps
-                    and self._device.type == "cuda"
+                    self._save_every_n_steps is None
+                    and self._epochs_run % self._save_every_n_epochs == 0
                 ):
-                    torch.cuda.memory._record_memory_history(enabled=None)
-
-                self._steps_run += 1
-                if self._steps_run % self._log_every_n_steps == 0:
-                    extra_metrics = {}
-                    extra_metrics["lr"] = get_lr(self._optimizer)
-                    if grad_norm is not None:
-                        extra_metrics["grad_norm"] = grad_norm
-
-                    self.log_metrics(
-                        trajectory,
-                        GRPOStats(*map(torch.stack, zip(*grpo_stats))),
-                        **extra_metrics,
-                    )
-
-                self.cleanup_after_step(trajectory, grpo_stats)
-                self._profiler.step()
-
-                pbar.update(1)
-
-                if self._steps_run == self._total_steps:
-                    training_completed = True
+                    self.save_checkpoint(curr_epoch)
+                if training_completed:
                     break
-
-            self._epochs_run += 1
-            if self._epochs_run % self._save_every_n_epochs == 0:
-                self.save_checkpoint(curr_epoch)
-            if training_completed:
+        except KeyboardInterrupt:
+            interrupted = True
+            utils.log_rank_zero(
+                log,
+                "Training interrupted by user. Saving final checkpoint before exit.",
+            )
+        finally:
+            self._profiler.stop()
+            pbar.close()
+            final_epoch = max(self._epochs_run - 1, last_epoch, 0)
+            self.save_checkpoint(final_epoch, is_final=True)
+            if interrupted:
                 return
-
-        self._profiler.stop()
 
     def log_metrics(
         self, trajectory: GRPOTrajectory, grpo_stats: GRPOStats, **extras

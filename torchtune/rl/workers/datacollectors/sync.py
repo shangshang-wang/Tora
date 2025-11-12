@@ -24,8 +24,8 @@ from torchrl.collectors import (
 )
 
 from torchtune import utils
-from torchtune.dev.rl.datatypes import Trajectory
-from torchtune.dev.rl.utils import stateless_init_process_group
+from torchtune.rl.datatypes import Trajectory
+from torchtune.rl.utils import stateless_init_process_group
 from vllm import LLM
 from vllm.worker.worker import Worker
 
@@ -92,7 +92,7 @@ class SyncLLMCollector(SyncDataCollector):
         self.policy_kwargs = policy_kwargs
 
         collate_name = self.cfg.get(
-            "collate_fn", "torchtune.dev.rl.data.padded_collate_rl"
+            "collate_fn", "torchtune.rl.data.padded_collate_rl"
         )
         dataloader = self._setup_data(
             self.cfg.dataset,

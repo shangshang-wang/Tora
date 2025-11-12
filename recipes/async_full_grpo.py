@@ -17,8 +17,8 @@ from tensordict import TensorDict, TensorDictBase
 from tensordict.utils import expand_as_right
 from torchrl.data import LazyStackStorage, RayReplayBuffer
 from torchtune import config, utils
-from torchtune.dev.rl.datatypes import RequestOutput, Trajectory
-from torchtune.dev.rl.workers import (
+from torchtune.rl.datatypes import RequestOutput, Trajectory
+from torchtune.rl.workers import (
     MetricLoggerWorker,
     PostProcessingWorker,
     SyncLLMCollector,
