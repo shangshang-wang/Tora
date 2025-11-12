@@ -3,7 +3,8 @@
 echo "START TIME: $(date)"
 echo "PYTHON ENV: $(which python)"
 
-source "./scripts/set/set_vars.sh"
+export CKPT_DIR="/path/to/checkpoints"
+export OUTPUT_DIR="/path/to/outputs"
 
 export CUDA_VISIBLE_DEVICES=0,1
 GPU_COUNT=$(python -c "import torch; print(torch.cuda.device_count())")
@@ -14,7 +15,7 @@ echo -e "\nNumber of GPUs: ${GPU_COUNT}\n"
 MODEL_SIZE="3B"           # Qwen2.5 Options: 1.5B, 3B, 7B, 14B, Qwen3 Options: 0.6B, 1.7B, 4B, 8B, 14B
 MODEL_FAMILY="qwen2_5"    # Options: qwen2_5, qwen3
 POST_TRAIN_TYPE="full"    # Options: full | lora, dora, dora_cache
-GRPO_LAUNCH_MODE="async"  # Options: sync | async (async currently supports Qwen2.5-3B full GRPO only)
+GRPO_LAUNCH_MODE="sync"   # Options: sync | async (async currently supports Qwen2.5-3B full GRPO only)
 USE_QLORA="false"         # Options: true, false
 USE_COMPILE="false"       # Options: true, false
 SEED=42                   # Set a seed for reproducibility

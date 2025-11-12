@@ -370,13 +370,15 @@ pip install torch torchvision torchao --upgrade  # Install the latest PyTorch an
 pip install wandb
 ```
 
-Download a model from the Hugging Face Hub.
+Download a model from the Hugging Face Hub (e.g., Qwen2.5 family).
 ```bash
 MODEL_SIZE=1.5B  # 1.5B, 3B, 7B, 14B, or 32B
 tune download "Qwen/Qwen2.5-${MODEL_SIZE}" \
 --output-dir "/tmp/Qwen2.5-${MODEL_SIZE}" \
 --hf-token <HF_TOKEN>
 ```
+
+The main entry points for GRPO training is in `./run_grpo_qwen.sh`.
 
 Below are example commands for running distributed GRPO training on 2 GPUs.
 You can easily switch between LoRA methods by modifying the `lora_type` parameter in the config file or overriding it on the command line.
