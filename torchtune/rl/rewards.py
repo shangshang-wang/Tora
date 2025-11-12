@@ -11,6 +11,7 @@ from typing import Optional, Union
 
 import torch
 
+from torchtune.models.qwen3_vl import Qwen3VLTransform
 from torchtune.modules.transforms.tokenizers import (
     HuggingFaceModelTokenizer,
     ModelTokenizer,
@@ -272,45 +273,103 @@ def batched_rewards(
     completions: torch.Tensor,
     answers: list[str],
     device: torch.device,
+    reward_functions: Optional[list["Reward"]] = None,
 ) -> tuple[torch.Tensor, torch.Tensor, dict]:
+    """
+    Compute rewards for a batch of GRPO samples.
 
+    Args:
+        tokenizer: tokenizer used to decode completions.
+        completions: tensor of decoded responses with shape ``[B, G, L]`` where
+            ``B`` is batch size, ``G`` is group size, and ``L`` is sequence length.
+        answers: list of answers. Expected to be length ``B`` (one answer per prompt)
+            or ``B * G`` (answer already expanded per sample).
+        device: target device for the returned tensors.
+        reward_functions: optional list of instantiated :class:`Reward` objects
+            defined through the recipe configuration. When ``None``, legacy
+            formatting rewards are used for backward compatibility.
+    """
+
+    batch_size, grpo_size, _ = completions.shape
+
+    if reward_functions:
+        if isinstance(tokenizer, Qwen3VLTransform):
+            for reward_fn in reward_functions:
+                if isinstance(reward_fn, ThinkingAnswerFormattingReward):
+                    reward_fn.think_tag = "reason"
+
+        flat_completion_ids = completions.reshape(batch_size * grpo_size, -1).cpu()
+        completion_texts = [
+            tokenizer.decode(flat_completion_ids[i].tolist())
+            for i in range(flat_completion_ids.shape[0])
+        ]
+
+        if len(answers) == batch_size:
+            expanded_answers = [answer for answer in answers for _ in range(grpo_size)]
+        elif len(answers) == batch_size * grpo_size:
+            expanded_answers = answers
+        else:
+            raise ValueError(
+                "Unexpected number of answers provided. Expected either one answer "
+                f"per prompt ({batch_size}) or per sample ({batch_size * grpo_size}), "
+                f"but received {len(answers)}."
+            )
+
+        num_reward_funcs = len(reward_functions)
+        rewards_tensor = torch.zeros(
+            batch_size, grpo_size, num_reward_funcs, dtype=torch.float32, device=device
+        )
+        successes_tensor = torch.zeros(
+            batch_size, grpo_size, num_reward_funcs, dtype=torch.float32, device=device
+        )
+        metadata = {
+            "func_names": [type(reward_fn).__name__ for reward_fn in reward_functions]
+        }
+
+        for idx, reward_fn in enumerate(reward_functions):
+            reward_output = reward_fn(
+                flat_completion_ids,
+                completion_texts,
+                expanded_answers,
+            )
+            rewards_tensor[:, :, idx] = reward_output.total_reward.reshape(
+                batch_size, grpo_size
+            ).to(device=device, dtype=torch.float32)
+            successes_tensor[:, :, idx] = reward_output.successes.reshape(
+                batch_size, grpo_size
+            ).to(device=device, dtype=torch.float32)
+
+        return rewards_tensor, successes_tensor, metadata
+
+    # Legacy fallback path for configs that do not explicitly define reward functions.
     reward_funcs = [
         at_least_one_space_between_think_tags,
         math_response_correct,
     ]
-
     num_reward_funcs = len(reward_funcs)
-
-    batch_size, grpo_size, _ = completions.shape
-
-    # TODO: should this be bfloat16?
 
     rewards_tensor = torch.zeros(
         batch_size, grpo_size, num_reward_funcs, dtype=torch.float32, device=device
     )
-
     successes_tensor = torch.zeros(
         batch_size, grpo_size, num_reward_funcs, dtype=torch.float32, device=device
     )
-
     metadata = {"func_names": [f.__name__ for f in reward_funcs]}
 
+    completions_cpu = completions.cpu()
+
     for b in range(batch_size):
-
         for g in range(grpo_size):
-
             answer = answers[b]
 
-            text_completion = tokenizer.decode(completions[b, g].tolist())
+            text_completion = tokenizer.decode(completions_cpu[b, g].tolist())
 
             cot, potential_answer = extract_tags(f"<think>{text_completion}")
 
             for rw_idx, reward_func in enumerate(reward_funcs):
-
                 reward, success = reward_func(cot, answer, potential_answer)
 
                 rewards_tensor[b, g, rw_idx] += reward
-
                 successes_tensor[b, g, rw_idx] += success
 
     return rewards_tensor, successes_tensor, metadata
