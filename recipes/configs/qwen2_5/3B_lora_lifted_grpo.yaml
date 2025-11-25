@@ -47,10 +47,11 @@ model:
   lora_attn_modules: ['q_proj', 'v_proj', 'output_proj']
   apply_lora_to_mlp: True
   apply_lora_to_output: False
-  lora_rank: ${oc.env:SHADOW_LORA_RANK} # lift: shadow rank for Lifted GRPO
-  lora_alpha: ${oc.env:SHADOW_LORA_ALPHA} # lift: shadow alpha for Lifted GRPO
-  target_lora_rank: ${oc.env:TARGET_LORA_RANK} # projection: target rank for Lifted GRPO
-  target_lora_alpha: ${oc.env:TARGET_LORA_ALPHA} # projection: target alpha for Lifted GRPO
+  lora_rank: ${oc.decode:${oc.env:SHADOW_LORA_RANK}}
+  lora_alpha: ${oc.decode:${oc.env:SHADOW_LORA_ALPHA}}
+  target_lora_rank: ${oc.decode:${oc.env:TARGET_LORA_RANK}}
+  target_lora_alpha: ${oc.decode:${oc.env:TARGET_LORA_ALPHA}}
+  shadow_sync_every_n_steps: ${oc.decode:${oc.env:SHADOW_SYNC_EVERY_N_STEPS}}
   lora_dropout: 0.0
   lora_type: "lora" # "lora", "dora", "dora_cache"
 
@@ -91,17 +92,17 @@ ppo_epochs: 1
 clip_grad_norm: 1.0
 
 epochs: 1
-early_stop_steps: 300
+early_stop_steps: 1000
 save_every_n_steps: 200
 save_every_n_epochs: 1
 resume_from_checkpoint: False
 optimizer:
   _component_: torch.optim.AdamW
-  lr: 5e-4
+  lr: 5e-5
   fused: True
 lr_scheduler:
   _component_: torchtune.training.lr_schedulers.get_cosine_schedule_with_warmup
-  num_warmup_steps: 50
+  num_warmup_steps: ${oc.decode:${oc.env:NUM_WARM_UP_STEPS}}
 loss:
   _component_: torchtune.rl.loss.GRPOSimpleLoss
   kl_coeff: 0.01

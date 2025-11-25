@@ -91,6 +91,22 @@ _ALL_RECIPES = [
         supports_distributed=True,
     ),
     Recipe(
+        name="full_lifted_grpo_distributed",
+        file_path="full_lifted_grpo_distributed.py",
+        configs=[
+            Config(name="qwen2_5/3B_full_lifted_grpo", file_path="qwen2_5/3B_full_lifted_grpo.yaml"),
+        ],
+        supports_distributed=True,
+    ),
+    Recipe(
+        name="lora_lifted_grpo_distributed",
+        file_path="lora_lifted_grpo_distributed.py",
+        configs=[
+            Config(name="qwen2_5/3B_lora_lifted_grpo", file_path="qwen2_5/3B_lora_lifted_grpo.yaml"),
+        ],
+        supports_distributed=True,
+    ),
+    Recipe(
         name="async_full_grpo",
         file_path="async_full_grpo.py",
         configs=[

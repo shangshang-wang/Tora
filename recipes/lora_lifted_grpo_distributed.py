@@ -49,7 +49,12 @@ CHECKPOINT_STEPS_RUN_KEY = "dataloader_steps_run"
 
 class LoRALiftedGRPORecipeDistributed(FTRecipeInterface):
     """
-    Distributed LoRA GRPO recipe with support for Projected Updates (Shadow Rank vs Target Rank).
+    Distributed LoRA GRPO recipe with support for Lifted Optimization (Iterative Rank Alignment).
+
+    Mechanism:
+    - Trains a High-Rank "Shadow Adapter" (e.g., r=64) to allow better exploration.
+    - Periodically synchronizes (SVD Projection) down to a Low-Rank "Target Adapter" (e.g., r=16)
+      to consolidate knowledge, then continues training.
     """
 
     def __init__(self, cfg: DictConfig) -> None:
@@ -126,12 +131,22 @@ class LoRALiftedGRPORecipeDistributed(FTRecipeInterface):
             default=self._shadow_alpha,
         )
 
+        self._shadow_sync_every_n_steps = model_cfg.get(
+            "shadow_sync_every_n_steps", cfg.get("sync_every_n_steps", None)
+        )
+        if self._shadow_sync_every_n_steps is not None:
+            if (
+                    not isinstance(self._shadow_sync_every_n_steps, int)
+                    or self._shadow_sync_every_n_steps <= 0
+            ):
+                raise ValueError("shadow_sync_every_n_steps must be a positive integer when provided.")
+
         self._use_projection = self._target_rank < self._shadow_rank
         self._shadow_weights_cache = {}  # To store High Rank weights on CPU during inference
 
         if self._use_projection and self.rank == 0:
             log.info(
-                f"Enabled PROJECTED GRPO: Shadow Rank={self._shadow_rank}, Target Rank={self._target_rank}"
+                f"Enabled LIFTED GRPO (Iterative Alignment): Shadow Rank={self._shadow_rank}, Target Rank={self._target_rank}, Sync Step={self._shadow_sync_every_n_steps}"
             )
 
         # logging attributes
@@ -427,6 +442,8 @@ class LoRALiftedGRPORecipeDistributed(FTRecipeInterface):
             del cfg_model_for_instantiation["target_lora_rank"]
         if "target_lora_alpha" in cfg_model_for_instantiation:
             del cfg_model_for_instantiation["target_lora_alpha"]
+        if "shadow_sync_every_n_steps" in cfg_model_for_instantiation:
+            del cfg_model_for_instantiation["shadow_sync_every_n_steps"]
 
         with training.set_default_dtype(self._dtype), torch.device("meta"):
             model = config.instantiate(cfg_model_for_instantiation)
@@ -645,8 +662,10 @@ class LoRALiftedGRPORecipeDistributed(FTRecipeInterface):
     def _project_weights_for_inference(self):
         """
         Compresses the Shadow (High Rank) weights to Target (Low Rank) weights,
-        and pads them to fit the model container for inference.
-        Handles cases where Shadow Rank > Hidden Dim using QR-SVD.
+        and pads them to fit the model container.
+
+        NOTE: In 'Lifted' mode, this is NOT called every step. It is available
+        if you want to save the compressed weights or evaluate the low-rank proxy.
         """
         if not self._use_projection:
             return
@@ -665,13 +684,6 @@ class LoRALiftedGRPORecipeDistributed(FTRecipeInterface):
                 key_b = key_a.replace("lora_a.weight", "lora_b.weight")
                 if key_b not in state_dict:
                     continue
-
-                # Get params
-                # A shape: (R, d_in) (Note: nn.Linear stores weights as Transposed compared to math notation)
-                # B shape: (d_out, R)
-                # Note: Torchtune/PEFT AdapterModule usually:
-                # lora_a: Linear(in, r) -> weight (r, in)
-                # lora_b: Linear(r, out) -> weight (out, r)
 
                 W_A_high = state_dict[key_a]
                 W_B_high = state_dict[key_b]
@@ -738,7 +750,7 @@ class LoRALiftedGRPORecipeDistributed(FTRecipeInterface):
     @torch.no_grad()
     def _restore_weights_for_training(self):
         """
-        Restores the Shadow (High Rank) weights from cache for the update step.
+        Restores the Shadow (High Rank) weights from cache.
         """
         if not self._use_projection:
             return
@@ -772,14 +784,90 @@ class LoRALiftedGRPORecipeDistributed(FTRecipeInterface):
             ):
                 module.alpha = alpha
 
+    @torch.no_grad()
+    def _synchronize_shadow_weights(self):
+        """
+        Projects the current Shadow (High Rank) adapters back onto the Target (Low Rank)
+        manifold and RE-INITIALIZES the Shadow weights from this projection.
+
+        CRITICAL FIX: Adds small Gaussian noise to the 'null space' (dimensions r to R)
+        to break symmetry and prevent the optimizer from ignoring the empty dimensions.
+        """
+        if not self._use_projection:
+            return
+
+        # We use a small epsilon for noise.
+        # Too large = destroys the benefit of projection (loss spike).
+        # Too small = optimizer cannot find the gradient (dead neurons).
+        NOISE_STD = 1e-3 # 1e-3
+
+        with FSDP.summon_full_params(self._model, writeback=True, rank0_only=False):
+            state_dict = self._model.state_dict()
+            keys = list(state_dict.keys())
+            lora_a_keys = [k for k in keys if "lora_a.weight" in k]
+
+            for key_a in lora_a_keys:
+                key_b = key_a.replace("lora_a.weight", "lora_b.weight")
+                if key_b not in state_dict:
+                    continue
+
+                W_A_high = state_dict[key_a]
+                W_B_high = state_dict[key_b]
+
+                # Convert to float32 for SVD stability
+                A = W_A_high.float().t()  # Shape (d_in, R)
+                B = W_B_high.float().t()  # Shape (R, d_out)
+
+                try:
+                    # QR-SVD logic as before
+                    Q_A, R_A = torch.linalg.qr(A)
+                    Q_B, R_B = torch.linalg.qr(B.t())
+                    M = R_A @ R_B.t()
+                    U, S, Vh = torch.linalg.svd(M)
+                except RuntimeError:
+                    log.warning(f"SVD failed for {key_a} during synchronization; keeping existing weights.")
+                    continue
+
+                r = self._target_rank
+
+                # 1. Extract the Core Low-Rank components
+                U_r = U[:, :r]
+                S_r = S[:r]
+                Vh_r = Vh[:r, :]
+
+                # 2. Reconstruct the Low-Rank Approximation
+                sqrt_S = torch.diag(torch.sqrt(S_r))
+                A_low = Q_A @ U_r @ sqrt_S  # (d_in, r)
+                B_low = sqrt_S @ Vh_r @ Q_B.t()  # (r, d_out)
+
+                # 3. Embed into High-Rank Container & APPLY NOISE BREAKING
+
+                # A_clean: (d_in, R)
+                A_clean = torch.zeros_like(A)
+                A_clean[:, :r] = A_low
+                # Inject noise into columns r through R
+                A_clean[:, r:] = torch.randn_like(A_clean[:, r:]) * NOISE_STD
+
+                # B_clean: (R, d_out)
+                B_clean = torch.zeros_like(B)
+                B_clean[:r, :] = B_low
+                # Inject noise into rows r through R
+                B_clean[r:, :] = torch.randn_like(B_clean[r:, :]) * NOISE_STD
+
+                # 4. Copy back to model
+                state_dict[key_a].copy_(A_clean.t().to(W_A_high.dtype))
+                state_dict[key_b].copy_(B_clean.t().to(W_B_high.dtype))
+
+                # Clear cache if it exists
+                if key_a in self._shadow_weights_cache:
+                    del self._shadow_weights_cache[key_a]
+                if key_b in self._shadow_weights_cache:
+                    del self._shadow_weights_cache[key_b]
+
     @staticmethod
     def _parse_int_field(
-        value: Any, field_name: str, default: Optional[int] = None
+            value: Any, field_name: str, default: Optional[int] = None
     ) -> int:
-        """
-        Normalize config-sourced integers which might arrive as strings
-        (e.g. from environment variables). Falls back to ``default`` when provided.
-        """
         if value is None:
             if default is None:
                 raise ValueError(f"{field_name} must be provided and castable to int.")
@@ -793,12 +881,8 @@ class LoRALiftedGRPORecipeDistributed(FTRecipeInterface):
 
     @staticmethod
     def _parse_float_field(
-        value: Any, field_name: str, default: Optional[float] = None
+            value: Any, field_name: str, default: Optional[float] = None
     ) -> float:
-        """
-        Normalize config-sourced floats which might arrive as strings
-        (e.g. from environment variables). Falls back to ``default`` when provided.
-        """
         if value is None:
             if default is None:
                 raise ValueError(f"{field_name} must be provided and castable to float.")
@@ -825,9 +909,9 @@ class LoRALiftedGRPORecipeDistributed(FTRecipeInterface):
         )
         start = time.perf_counter()
 
-        # Ensure we are saving the SHADOW weights, not projected ones
-        # Since we restore weights after generation, self._model currently holds Shadow weights.
-        # No changes needed here, logic naturally saves Shadow weights.
+        # NOTE: This saves the current SHADOW weights (rank R).
+        # If you want to deploy as rank r, you must project offline or call project() here.
+        # We default to saving the training state (Shadow) so training can be resumed.
 
         cpu_state_dict = training.gather_cpu_state_dict(
             self._model,
@@ -922,17 +1006,8 @@ class LoRALiftedGRPORecipeDistributed(FTRecipeInterface):
             self, input_ids: torch.Tensor, answers: list[str]
     ) -> GRPOTrajectory:
         """
-        Generates a trajectory given the current policy model (with LoRA adapters),
-        the reference policy model (base model without adapters), the reward function,
-        and batch of inputs.
-
-        Args:
-            input_ids (torch.Tensor): tensor of input token IDs with shape [b, seq_length]
-            answers (list[str]): list of answers corresponding to the input_ids
-
-        Returns:
-            Trajectory: An instance of :class:`~torchtune.rlhf.GRPOTrajectory` comprising
-                the current trajectory.
+        Generates a trajectory given the current policy model (Shadow Adapter),
+        the reference policy model, the reward function, and batch of inputs.
         """
         batch_size, context_length = input_ids.shape
         grpo_size = self.grpo_samples
@@ -1061,7 +1136,8 @@ class LoRALiftedGRPORecipeDistributed(FTRecipeInterface):
         aggregated_rewards_bg = (reward_components_bg * reward_weights).sum(dim=-1)
         successes_bg = successes_bg.mean(dim=-1)
 
-        advantages = (aggregated_rewards_bg - aggregated_rewards_bg.mean(1, keepdim=True)) / (aggregated_rewards_bg.std(1, keepdim=True) + 1e-4)
+        advantages = (aggregated_rewards_bg - aggregated_rewards_bg.mean(1, keepdim=True)) / (
+                    aggregated_rewards_bg.std(1, keepdim=True) + 1e-4)
         aggregated_rewards = aggregated_rewards_bg.reshape(batch_size * grpo_size)
         successes = successes_bg.reshape(batch_size * grpo_size)
         reward_components = reward_components_bg.reshape(batch_size * grpo_size, -1)
@@ -1197,17 +1273,21 @@ class LoRALiftedGRPORecipeDistributed(FTRecipeInterface):
 
                     _, context_length = tokens.shape
 
-                    # Project High Rank -> Low Rank for Inference
-                    if self._use_projection:
-                        # This is slow (FSDP gather + SVD + scatter), but necessary
-                        self._project_weights_for_inference()
+                    # --- REVISION START ---
+                    # DISABLED: Per-step projection causes "SVD Amnesia".
+                    # We now sample directly from Shadow (Rank R) to explore high-dim space.
+                    # if self._use_projection:
+                    #     self._project_weights_for_inference()
+                    # ----------------------
 
                     trajectory = self.generate_trajectory_batched(tokens, answers)
                     torch.distributed.barrier()
 
-                    # Restore High Rank for Training
-                    if self._use_projection:
-                        self._restore_weights_for_training()
+                    # --- REVISION START ---
+                    # DISABLED: No restoration needed since we didn't project.
+                    # if self._use_projection:
+                    #     self._restore_weights_for_training()
+                    # ----------------------
 
                     grpo_stats: list[GRPOStats] = []
                     for _ in range(self._ppo_epochs):
@@ -1222,10 +1302,24 @@ class LoRALiftedGRPORecipeDistributed(FTRecipeInterface):
 
                         torch.distributed.barrier()
                         self._optimizer.step()
-                        self._optimizer.zero_grad(set_to_none=True)
                         torch.distributed.barrier()
 
                         self.global_step += 1
+
+                        # --- REVISION START ---
+                        # ENABLED: This is the core "Iterative Alignment" logic.
+                        # Periodically (e.g. every 100 steps), we compress knowledge to Rank r
+                        # and then re-expand to Rank R.
+                        if (
+                                self._use_projection
+                                and self._shadow_sync_every_n_steps
+                                and self.global_step % self._shadow_sync_every_n_steps == 0
+                        ):
+                            self._synchronize_shadow_weights()
+                        # ----------------------
+
+                        self._optimizer.zero_grad(set_to_none=True)
+                        torch.distributed.barrier()
 
                         if self._lr_scheduler is not None:
                             self._lr_scheduler.step()
@@ -1369,6 +1463,7 @@ def recipe_main(cfg: DictConfig) -> None:
     recipe.setup(cfg=cfg)
     recipe.train()
     recipe.cleanup()
+
 
 if __name__ == "__main__":
     sys.exit(recipe_main())
