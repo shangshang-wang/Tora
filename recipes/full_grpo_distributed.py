@@ -33,6 +33,7 @@ from torchtune.recipe_interfaces import FTRecipeInterface
 from torchtune.training import disable_dropout, DummyProfiler, PROFILER_KEY
 from torchtune.training.lr_schedulers import get_lr
 from tqdm import tqdm
+from torchtune.recipe_support.reward_preview import RewardPreviewer, decode_responses
 
 log = utils.get_logger("DEBUG")
 
@@ -63,6 +64,7 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
         init_process_group(self.distributed_backend)
         self.world_size, self.rank = utils.get_world_size_and_rank()
         self._is_rank_zero = self.rank == 0
+        self._reward_preview = RewardPreviewer(cfg.get("reward_preview"), self._is_rank_zero)
 
         # Training attributes
         self._resume_from_checkpoint = cfg.resume_from_checkpoint
@@ -188,6 +190,7 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
 
         # Utilize the same tokenizer for both models (hack)
         self._tokenizer = config.instantiate(cfg.tokenizer)
+        self._reward_preview.set_tokenizer(self._tokenizer)
 
         self._optimizer = self._setup_optimizer(
             cfg_optimizer=cfg.optimizer,
@@ -741,6 +744,12 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
 
         # Do some reward modeling
         response_ids = responses.reshape(batch_size * grpo_size, -1)  # [B * G, L]
+        responses_str: list[str] | None = None
+        if self.reward_functions or self._reward_preview.enabled:
+            responses_str = decode_responses(self._tokenizer, response_ids)
+
+        self._reward_preview.maybe_preview(input_ids, responses_str, answers, grpo_size)
+
         if self.reward_functions:
             answers_expanded = [
                 answer for answer in answers for _ in range(grpo_size)
@@ -750,18 +759,8 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
                     "Number of answers does not match the number of generated responses."
                 )
 
-            responses_str = []
-            for i in range(response_ids.shape[0]):
-                decoded = self._tokenizer.decode(
-                    response_ids[i].tolist(), skip_special_tokens=False
-                )
-                stripped = decoded.lstrip()
-                think_idx = stripped.find("<think>")
-                if think_idx != -1:
-                    decoded = stripped[think_idx:]
-                else:
-                    decoded = f"<think>{stripped}"
-                responses_str.append(decoded)
+            if responses_str is None:
+                responses_str = decode_responses(self._tokenizer, response_ids)
 
             reward_outputs = [
                 reward_fn(response_ids, responses_str, answers_expanded)
@@ -973,6 +972,7 @@ class GRPOFullFinetuneRecipeDistributed(FTRecipeInterface):
 
                     _, context_length = tokens.shape
 
+                    self._reward_preview.maybe_reset(self.global_step)
                     trajectory = self.generate_trajectory_batched(tokens, answers)
                     torch.distributed.barrier()
 
