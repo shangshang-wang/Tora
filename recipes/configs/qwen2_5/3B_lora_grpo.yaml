@@ -125,6 +125,12 @@ reward_functions:
       answer_tag: answer
       positive_reward: 100.0
       negative_reward: 0.0
+reward_preview:
+  count: 1
+  char_limit: -1
+  include_prompt: true
+  include_target: true
+  weight_push_interval: 100
 
 # Logging
 metric_logger:
